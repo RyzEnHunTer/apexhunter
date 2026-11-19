@@ -2,80 +2,108 @@ import pandas as pd
 import numpy as np
 import os
 import sys
-import joblib
-import sys
-sys.path.append('d:/FOREX/FOREX')
-from lk_system.core.market_structure import MarketStructure
-from lk_system.core.session_manager import SessionManager
-from lk_system.core.imbalance import ImbalanceDetector
-from lk_system.core.market_conditions import AdvancedConditionCalculator
-from lk_system.core.session_analyzer import DynamicSessionAnalyzer
+import glob
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 try:
-    from lk_system.core.optimal_windows import OPTIMAL_WINDOWS
+    from core.market_structure import MarketStructure
+    from core.session_manager import SessionManager
+    from core.imbalance import ImbalanceDetector
+    from core.dealing_range import DealingRangeEngine
 except ImportError:
-    OPTIMAL_WINDOWS = {}
+    from lk_system.core.market_structure import MarketStructure
+    from lk_system.core.session_manager import SessionManager
+    from lk_system.core.imbalance import ImbalanceDetector
+    from lk_system.core.dealing_range import DealingRangeEngine
 
 class TickBacktestEngine:
-    def __init__(self, execution_mode='MARKET_CONFIRMATION', target_sessions=None, pair_name='EURUSD', use_ml_filter=False, use_amcc=True, partial_ratio=0.3):
-        """
-        execution_mode: 'LIMIT' or 'MARKET_CONFIRMATION'
-        target_sessions: List of sessions to trade (e.g., ['London', 'NY'] or ['Asia', 'London'])
-        """
+    """
+    Production-Grade Lewis Kelly Algorithmic Trading Engine.
+    
+    Faithfully implements Lewis Kelly's SMC rules:
+    1. Multi-Timeframe Alignment: M15 Trend + 50% Dealing Range (Wholesale/Retail).
+    2. Liquidity Raids: Asian High/Low or London High/Low sweeps during Killzones.
+    3. Lower Timeframe Confirmation: 1M CHoCH (full body close) + 1M FVG/OB retest.
+    4. Tight Invalidation Stop Loss: Placed 1-2 pips above/below 1M sweep extreme.
+    5. Dynamic 6-Tier Scaling (+2.5R BE, +4.3R, +6R, +8.5R, +10R, +13R).
+    6. Daily Circuit Breaker: Maximum 2 consecutive losses per trading day.
+    """
+    def __init__(self, execution_mode='MARKET_CONFIRMATION', target_sessions=None, pair_name='EURUSD', 
+                 use_ml_filter=False, use_amcc=False, management_mode='LK_DYNAMIC', max_daily_losses=2):
         self.execution_mode = execution_mode
-        self.target_sessions = target_sessions or ['Asia', 'London', 'NY']
+        self.target_sessions = target_sessions or ['London', 'NY']
         self.pair_name = pair_name
         self.use_ml_filter = use_ml_filter
         self.use_amcc = use_amcc
-        self.allowed_days = None
-        self.ml_model = None
+        self.management_mode = management_mode
+        self.max_daily_losses = max_daily_losses
         
-        if self.use_ml_filter and self.pair_name:
-            self.load_ml_model()
-            
         self.capital = 5000.0
         self.initial_capital = 5000.0
-        self.risk_per_trade = 0.0115
+        self.risk_per_trade = 0.01 # 1.0% equity risk
         
-        self.rr_ratio = 6.0
-        self.breakeven_rr = 3.0
-        self.partial_ratio = partial_ratio
-        
-        self.awaiting_short_fvg = False
-        self.awaiting_short_sl = 0.0
-        self.awaiting_short_time = None
-        self.awaiting_short_features = None
-        
-        self.awaiting_long_fvg = False
-        self.awaiting_long_sl = 0.0
-        self.awaiting_long_time = None
-        self.awaiting_long_features = None
+        # Lewis Kelly Scaling Tiers
+        self.scale_tiers = [
+            (2.5, 0.25),  # At +2.5R, close 25% and move SL to BE (+0.5R)
+            (4.3, 0.15),  # At +4.3R, close 15% and trail SL behind 1M swings
+            (6.0, 0.15),  # At +6.0R, close 15%
+            (8.5, 0.15),  # At +8.5R, close 15%
+            (10.0, 0.15), # At +10.0R, close 15%
+            (13.0, 0.15), # At +13.0R, close final 15%
+        ]
         
         self.trades = []
-        self.last_traded_session = None
+        self.daily_losses = {} # date -> count of losses
         
-        self.market_structure = MarketStructure()
+        # Engines
+        self.structure_m15 = MarketStructure(pullback_candles=3)
+        self.structure_m1 = MarketStructure(pullback_candles=3)
         self.session_manager = SessionManager()
-        self.imbalance_detector = ImbalanceDetector()
-        self.condition_calculator = AdvancedConditionCalculator()
-        self.session_analyzer = DynamicSessionAnalyzer(drop_threshold=0.70)
+        self.imbalance_m15 = ImbalanceDetector()
+        self.imbalance_m1 = ImbalanceDetector()
+        self.dealing_range = DealingRangeEngine()
+
+    def load_and_resample(self, path_or_pattern):
+        """
+        Loads tick data from CSV or Parquet files and resamples to M1, M5, M15.
+        """
+        print(f"Loading tick data from {path_or_pattern}...")
         
-    def load_ml_model(self):
-        model_path = os.path.join(r"D:\FOREX\FOREX\qpe\ai\models", f"{self.pair_name}_rf_model.pkl")
-        if os.path.exists(model_path):
-            self.ml_model = joblib.load(model_path)
-            print(f"Loaded ML Brain for {self.pair_name}")
-        else:
-            print(f"Warning: No ML Brain found for {self.pair_name} at {model_path}")
-            self.use_ml_filter = False
+        df_ticks = None
+        if os.path.isdir(path_or_pattern):
+            files = sorted(glob.glob(os.path.join(path_or_pattern, f"ticks_{self.pair_name}_*.parquet")))
+            if not files:
+                files = sorted(glob.glob(os.path.join(path_or_pattern, "*.parquet")))
+            print(f"Reading {len(files)} parquet files...")
+            dfs = []
+            for f in files:
+                dfs.append(pd.read_parquet(f))
+            df_ticks = pd.concat(dfs, ignore_index=True)
+            if 'time_dt' in df_ticks.columns:
+                df_ticks['Datetime'] = pd.to_datetime(df_ticks['time_dt'])
+            df_ticks.set_index('Datetime', inplace=True)
+            df_ticks['Price'] = df_ticks['bid']
             
-    def load_and_resample(self, file_path):
-        print(f"Loading tick data from {file_path} (reading all rows)...")
-        df_ticks = pd.read_csv(file_path, sep='\t')
-        
-        df_ticks['Datetime'] = pd.to_datetime(df_ticks['<DATE>'] + ' ' + df_ticks['<TIME>'], format='%Y.%m.%d %H:%M:%S.%f')
-        df_ticks.set_index('Datetime', inplace=True)
-        df_ticks['Price'] = df_ticks['<BID>']
-        
+        elif path_or_pattern.endswith('.parquet'):
+            df_ticks = pd.read_parquet(path_or_pattern)
+            if 'time_dt' in df_ticks.columns:
+                df_ticks['Datetime'] = pd.to_datetime(df_ticks['time_dt'])
+            df_ticks.set_index('Datetime', inplace=True)
+            df_ticks['Price'] = df_ticks['bid']
+            
+        elif path_or_pattern.endswith('.csv'):
+            df_ticks = pd.read_csv(path_or_pattern, sep='\t' if '\t' in open(path_or_pattern).readline() else ',')
+            if '<DATE>' in df_ticks.columns and '<TIME>' in df_ticks.columns:
+                df_ticks['Datetime'] = pd.to_datetime(df_ticks['<DATE>'] + ' ' + df_ticks['<TIME>'])
+            elif 'time' in df_ticks.columns:
+                df_ticks['Datetime'] = pd.to_datetime(df_ticks['time'])
+            df_ticks.set_index('Datetime', inplace=True)
+            price_col = '<BID>' if '<BID>' in df_ticks.columns else ('bid' if 'bid' in df_ticks.columns else 'Price')
+            df_ticks['Price'] = df_ticks[price_col]
+
         print("Resampling to M1, M5, and M15...")
         df_m1 = df_ticks['Price'].resample('1min').ohlc().dropna()
         df_m5 = df_ticks['Price'].resample('5min').ohlc().dropna()
@@ -85,315 +113,309 @@ class TickBacktestEngine:
         df_m5.columns = ['Open', 'High', 'Low', 'Close']
         df_m15.columns = ['Open', 'High', 'Low', 'Close']
         
-        df_m1.index = df_m1.index.tz_localize('UTC').tz_convert('US/Eastern')
-        df_m5.index = df_m5.index.tz_localize('UTC').tz_convert('US/Eastern')
-        df_m15.index = df_m15.index.tz_localize('UTC').tz_convert('US/Eastern')
-        
+        if df_m1.index.tz is None:
+            df_m1.index = df_m1.index.tz_localize('UTC').tz_convert('US/Eastern')
+            df_m5.index = df_m5.index.tz_localize('UTC').tz_convert('US/Eastern')
+            df_m15.index = df_m15.index.tz_localize('UTC').tz_convert('US/Eastern')
+        else:
+            df_m1.index = df_m1.index.tz_convert('US/Eastern')
+            df_m5.index = df_m5.index.tz_convert('US/Eastern')
+            df_m15.index = df_m15.index.tz_convert('US/Eastern')
+            
         return df_m1, df_m5, df_m15
 
-    def run(self, df_m1, df_m5, df_m15, risk_schedule=None):
-        print(f"Running Pure Lewis Kelly Video Strategy (Mode: {self.execution_mode})...")
-        print(f"Total M15 bars: {len(df_m15)} | Total M1 bars: {len(df_m1)} | Total M5 bars: {len(df_m5)}")
+    def run(self, df_m1, df_m5, df_m15):
+        print(f"Running Lewis Kelly Artificial Trading Brain ({self.execution_mode})...")
+        print(f"Total M15 bars: {len(df_m15)} | Total M1 bars: {len(df_m1)}")
         
+        # 1. Prepare Higher Timeframe Context (M15)
         df_m15 = self.session_manager.update(df_m15)
-        df_m15 = self.market_structure.update(df_m15)
+        df_m15 = self.structure_m15.update(df_m15)
+        df_m15 = self.imbalance_m15.detect(df_m15)
+        df_m15 = self.dealing_range.calculate_range(df_m15)
         
-        if self.use_amcc:
-            self.condition_calculator.initialize(df_m15)
-            self.session_analyzer.initialize(df_m15)
-        
-        df_m1 = self.market_structure.update(df_m1)
-        df_m1 = self.imbalance_detector.detect(df_m1)
-        df_m5 = self.imbalance_detector.detect(df_m5)
+        # 2. Prepare Lower Timeframe Execution (M1)
+        df_m1 = self.structure_m1.update(df_m1)
+        df_m1 = self.imbalance_m1.detect(df_m1)
         
         m15_records = df_m15.to_dict('index')
-        m5_records = df_m5.to_dict('index')
         
         active_trade = None
         pending_setup = None
-        pending_features = None
         
-        for m1_dt, m1_bar in df_m1.iterrows():
+        # Confirmation tracking state
+        awaiting_choch = None # 'Short' or 'Long'
+        sweep_extreme_price = 0.0
+        sweep_time = None
+        recent_displacement_fvg = None
+        
+        pip_size = 0.0001 if 'JPY' not in self.pair_name else 0.01
+        
+        # Fast array access for M1
+        m1_highs = df_m1['High'].values
+        m1_lows = df_m1['Low'].values
+        m1_closes = df_m1['Close'].values
+        m1_opens = df_m1['Open'].values
+        m1_choch = df_m1['CHoCH'].values
+        m1_trends = df_m1['Trend'].values
+        m1_swing_high = df_m1['Swing_High'].values
+        m1_swing_low = df_m1['Swing_Low'].values
+        m1_bull_fvg = df_m1['Bullish_FVG'].values
+        m1_bear_fvg = df_m1['Bearish_FVG'].values
+        m1_bull_ob = df_m1['Bullish_OB'].values
+        m1_bear_ob = df_m1['Bearish_OB'].values
+        m1_bear_ob_l = df_m1['Bearish_OB_Low'].values
+        m1_bull_ob_h = df_m1['Bullish_OB_High'].values
+        m1_times = df_m1.index
+        
+        n_m1 = len(df_m1)
+        
+        for i in range(n_m1):
+            m1_dt = m1_times[i]
+            m1_h = m1_highs[i]
+            m1_l = m1_lows[i]
+            m1_c = m1_closes[i]
+            
             m15_dt = m1_dt.floor('15min')
             if m15_dt not in m15_records:
                 continue
                 
             m15_bar = m15_records[m15_dt]
             active_session = m15_bar['Active_Session']
+            current_day = m1_dt.date()
             
-            # 0. HTF Pair Screener Filter (Daily Trend)
-            current_day = m1_dt.floor('1D')
-            if self.allowed_days is not None and current_day not in self.allowed_days:
+            # --- 1. Manage Active Trade ---
+            if active_trade:
+                trade_type = active_trade['type']
+                entry = active_trade['entry_price']
+                risk = active_trade['risk']
+                
+                if trade_type == 'long':
+                    peak_r = (m1_h - entry) / risk if risk > 0 else 0
+                    
+                    for r_target, partial_share in self.scale_tiers:
+                        tier_key = f"tier_{r_target}"
+                        if peak_r >= r_target and not active_trade.get(tier_key, False):
+                            active_trade[tier_key] = True
+                            pnl_tier = self.capital * self.risk_per_trade * partial_share * r_target
+                            active_trade['realized_pnl'] += pnl_tier
+                            active_trade['remaining_weight'] -= partial_share
+                            active_trade['partials_taken'].append((r_target, partial_share))
+                            
+                            # Move to Breakeven (+0.5R) at +2.5R
+                            if r_target >= 2.5:
+                                be_price = entry + (0.5 * risk)
+                                if active_trade['sl'] < be_price:
+                                    active_trade['sl'] = be_price
+                                    
+                    # Trail SL behind newly confirmed 1M swing lows after tier 4.3R
+                    if active_trade.get('tier_4.3', False) and m1_swing_low[i]:
+                        cand_sl = m1_l - (1.0 * pip_size)
+                        if cand_sl > active_trade['sl']:
+                            active_trade['sl'] = cand_sl
+                            
+                    # Check Stop Loss / Breakeven Hit
+                    if m1_l <= active_trade['sl']:
+                        active_trade['exit_time'] = m1_dt
+                        active_trade['exit_price'] = active_trade['sl']
+                        rem_r = (active_trade['sl'] - entry) / risk
+                        rem_pnl = self.capital * self.risk_per_trade * active_trade['remaining_weight'] * rem_r
+                        active_trade['realized_pnl'] += rem_pnl
+                        active_trade['pnl'] = active_trade['realized_pnl']
+                        self.capital += active_trade['pnl']
+                        if active_trade['pnl'] < 0:
+                            self.daily_losses[current_day] = self.daily_losses.get(current_day, 0) + 1
+                        self.trades.append(active_trade)
+                        active_trade = None
+                        continue
+                        
+                    # Check Max Target (+13R)
+                    if peak_r >= 13.0:
+                        active_trade['exit_time'] = m1_dt
+                        active_trade['exit_price'] = entry + (13.0 * risk)
+                        rem_pnl = self.capital * self.risk_per_trade * active_trade['remaining_weight'] * 13.0
+                        active_trade['realized_pnl'] += rem_pnl
+                        active_trade['pnl'] = active_trade['realized_pnl']
+                        self.capital += active_trade['pnl']
+                        self.trades.append(active_trade)
+                        active_trade = None
+                        continue
+                        
+                elif trade_type == 'short':
+                    peak_r = (entry - m1_l) / risk if risk > 0 else 0
+                    
+                    for r_target, partial_share in self.scale_tiers:
+                        tier_key = f"tier_{r_target}"
+                        if peak_r >= r_target and not active_trade.get(tier_key, False):
+                            active_trade[tier_key] = True
+                            pnl_tier = self.capital * self.risk_per_trade * partial_share * r_target
+                            active_trade['realized_pnl'] += pnl_tier
+                            active_trade['remaining_weight'] -= partial_share
+                            active_trade['partials_taken'].append((r_target, partial_share))
+                            
+                            if r_target >= 2.5:
+                                be_price = entry - (0.5 * risk)
+                                if active_trade['sl'] > be_price:
+                                    active_trade['sl'] = be_price
+                                    
+                    # Trail SL behind newly confirmed 1M swing highs after tier 4.3R
+                    if active_trade.get('tier_4.3', False) and m1_swing_high[i]:
+                        cand_sl = m1_h + (1.0 * pip_size)
+                        if cand_sl < active_trade['sl']:
+                            active_trade['sl'] = cand_sl
+                            
+                    if m1_h >= active_trade['sl']:
+                        active_trade['exit_time'] = m1_dt
+                        active_trade['exit_price'] = active_trade['sl']
+                        rem_r = (entry - active_trade['sl']) / risk
+                        rem_pnl = self.capital * self.risk_per_trade * active_trade['remaining_weight'] * rem_r
+                        active_trade['realized_pnl'] += rem_pnl
+                        active_trade['pnl'] = active_trade['realized_pnl']
+                        self.capital += active_trade['pnl']
+                        if active_trade['pnl'] < 0:
+                            self.daily_losses[current_day] = self.daily_losses.get(current_day, 0) + 1
+                        self.trades.append(active_trade)
+                        active_trade = None
+                        continue
+                        
+                    if peak_r >= 13.0:
+                        active_trade['exit_time'] = m1_dt
+                        active_trade['exit_price'] = entry - (13.0 * risk)
+                        rem_pnl = self.capital * self.risk_per_trade * active_trade['remaining_weight'] * 13.0
+                        active_trade['realized_pnl'] += rem_pnl
+                        active_trade['pnl'] = active_trade['realized_pnl']
+                        self.capital += active_trade['pnl']
+                        self.trades.append(active_trade)
+                        active_trade = None
+                        continue
                 continue
                 
-            current_risk = risk_schedule.get(current_day, self.risk_per_trade) if risk_schedule else self.risk_per_trade
-            if current_risk <= 0.0:
-                continue
-            
-            # 1. Manage Active Trade
-            if active_trade:
-                if active_trade['type'] == 'long':
-                    current_rr = (m1_bar['High'] - active_trade['entry_price']) / (active_trade['entry_price'] - active_trade['original_sl'])
-                    if current_rr >= self.breakeven_rr and active_trade['sl'] < active_trade['entry_price']:
-                        active_trade['sl'] = active_trade['entry_price']
-                        active_trade['partial_taken'] = True
-                        
-                    if m1_bar['Low'] <= active_trade['sl']:
-                        active_trade['exit_price'] = active_trade['sl']
-                        active_trade['exit_time'] = m1_dt
-                        if active_trade['sl'] == active_trade['entry_price']:
-                            active_trade['pnl'] = (self.capital * current_risk * self.partial_ratio * self.breakeven_rr) if active_trade.get('partial_taken') else 0.0
-                        else:
-                            active_trade['pnl'] = -self.capital * current_risk
-                        self.capital += active_trade['pnl']
-                        self.trades.append(active_trade)
-                        active_trade = None
-                    elif m1_bar['High'] >= active_trade['tp']:
-                        active_trade['exit_price'] = active_trade['tp']
-                        active_trade['exit_time'] = m1_dt
-                        active_trade['pnl'] = self.capital * current_risk * (self.partial_ratio * self.breakeven_rr + (1 - self.partial_ratio) * self.rr_ratio)
-                        self.capital += active_trade['pnl']
-                        self.trades.append(active_trade)
-                        active_trade = None
-                        
-                elif active_trade['type'] == 'short':
-                    current_rr = (active_trade['entry_price'] - m1_bar['Low']) / (active_trade['original_sl'] - active_trade['entry_price'])
-                    if current_rr >= self.breakeven_rr and active_trade['sl'] > active_trade['entry_price']:
-                        active_trade['sl'] = active_trade['entry_price']
-                        active_trade['partial_taken'] = True
-                        
-                    if m1_bar['High'] >= active_trade['sl']:
-                        active_trade['exit_price'] = active_trade['sl']
-                        active_trade['exit_time'] = m1_dt
-                        if active_trade['sl'] == active_trade['entry_price']:
-                            active_trade['pnl'] = (self.capital * current_risk * self.partial_ratio * self.breakeven_rr) if active_trade.get('partial_taken') else 0.0
-                        else:
-                            active_trade['pnl'] = -self.capital * current_risk
-                        self.capital += active_trade['pnl']
-                        self.trades.append(active_trade)
-                        active_trade = None
-                    elif m1_bar['Low'] <= active_trade['tp']:
-                        active_trade['exit_price'] = active_trade['tp']
-                        active_trade['exit_time'] = m1_dt
-                        active_trade['pnl'] = self.capital * current_risk * (self.partial_ratio * self.breakeven_rr + (1 - self.partial_ratio) * self.rr_ratio)
-                        self.capital += active_trade['pnl']
-                        self.trades.append(active_trade)
-                        active_trade = None
-                continue
-            
-            # 2. Check Pending Setup Execution
+            # --- 2. Check Pending Setup Execution ---
             if pending_setup:
-                if pending_setup == 'Short':
-                    if m1_bar['High'] >= pending_ob_low:
-                        use_limit = False
-                        if self.execution_mode == 'LIMIT':
-                            use_limit = True
-                                
-                        if use_limit:
-                            entry = pending_ob_low
-                            risk = abs(entry - pending_sl)
+                # Cancel if pending setup is older than 20 minutes or session ended
+                if (m1_dt - pending_setup['time']).total_seconds() > 1200 or active_session not in self.target_sessions:
+                    pending_setup = None
+                elif pending_setup['type'] == 'short':
+                    # Entry triggered if price pulls back to entry level (or market execution mode)
+                    if m1_h >= pending_setup['entry_price'] or self.execution_mode == 'MARKET_CONFIRMATION':
+                        entry = pending_setup['entry_price'] if m1_h >= pending_setup['entry_price'] else m1_c
+                        risk = abs(entry - pending_setup['sl'])
+                        if 0.0003 <= risk <= 0.0025: # 3 to 25 pips valid risk range
                             active_trade = {
                                 'type': 'short', 'entry_time': m1_dt, 'entry_price': entry,
-                                'original_sl': pending_sl, 'sl': pending_sl, 'tp': entry - (risk * self.rr_ratio),
-                                'pnl': 0, 'features': pending_features
+                                'original_sl': pending_setup['sl'], 'sl': pending_setup['sl'],
+                                'risk': risk, 'remaining_weight': 1.0, 'realized_pnl': 0.0,
+                                'partials_taken': []
                             }
-                            self.last_traded_session = m15_bar['Active_Session']
                             pending_setup = None
-                        elif self.execution_mode == 'MARKET_CONFIRMATION':
-                            if m1_bar['Close'] < m1_bar['Open']:
-                                entry = m1_bar['Close']
-                                risk = abs(entry - pending_sl)
-                                if risk > 0.0001: 
-                                    active_trade = {
-                                        'type': 'short', 'entry_time': m1_dt, 'entry_price': entry,
-                                        'original_sl': pending_sl, 'sl': pending_sl, 'tp': entry - (risk * self.rr_ratio),
-                                        'pnl': 0, 'features': pending_features
-                                    }
-                                    self.last_traded_session = m15_bar['Active_Session']
-                                    pending_setup = None
-                                
-                elif pending_setup == 'Long':
-                    if m1_bar['Low'] <= pending_ob_high:
-                        use_limit = False
-                        if self.execution_mode == 'LIMIT':
-                            use_limit = True
-                                
-                        if use_limit:
-                            entry = pending_ob_high
-                            risk = abs(entry - pending_sl)
+                elif pending_setup['type'] == 'long':
+                    if m1_l <= pending_setup['entry_price'] or self.execution_mode == 'MARKET_CONFIRMATION':
+                        entry = pending_setup['entry_price'] if m1_l <= pending_setup['entry_price'] else m1_c
+                        risk = abs(entry - pending_setup['sl'])
+                        if 0.0003 <= risk <= 0.0025:
                             active_trade = {
                                 'type': 'long', 'entry_time': m1_dt, 'entry_price': entry,
-                                'original_sl': pending_sl, 'sl': pending_sl, 'tp': entry + (risk * self.rr_ratio),
-                                'pnl': 0, 'features': pending_features
+                                'original_sl': pending_setup['sl'], 'sl': pending_setup['sl'],
+                                'risk': risk, 'remaining_weight': 1.0, 'realized_pnl': 0.0,
+                                'partials_taken': []
                             }
-                            self.last_traded_session = m15_bar['Active_Session']
                             pending_setup = None
-                        elif self.execution_mode == 'MARKET_CONFIRMATION':
-                            if m1_bar['Close'] > m1_bar['Open']:
-                                entry = m1_bar['Close']
-                                risk = abs(entry - pending_sl)
-                                if risk > 0.0001:
-                                    active_trade = {
-                                        'type': 'long', 'entry_time': m1_dt, 'entry_price': entry,
-                                        'original_sl': pending_sl, 'sl': pending_sl, 'tp': entry + (risk * self.rr_ratio),
-                                        'pnl': 0, 'features': pending_features
-                                    }
-                                    self.last_traded_session = m15_bar['Active_Session']
-                                    pending_setup = None
-                                
-                if pending_setup == 'Short' and m1_bar['High'] > pending_sl:
-                    pending_setup = None
-                elif pending_setup == 'Long' and m1_bar['Low'] < pending_sl:
-                    pending_setup = None
+                            
+            # --- 3. Look for New Confirmation Setups ---
+            if self.daily_losses.get(current_day, 0) >= self.max_daily_losses:
+                continue
+                
+            if active_session in self.target_sessions and not active_trade and not pending_setup:
+                m15_trend = m15_bar['Trend']
+                in_premium = m15_bar['In_Premium']
+                in_discount = m15_bar['In_Discount']
+                
+                # Liquidity Sweeps
+                swept_high = False
+                swept_low = False
+                
+                if active_session == 'London':
+                    swept_high = m15_bar.get('Asia_Ever_Swept_High', False) or m15_bar.get('Sweep_High', False)
+                    swept_low = m15_bar.get('Asia_Ever_Swept_Low', False) or m15_bar.get('Sweep_Low', False)
+                elif active_session == 'NY':
+                    swept_high = m15_bar.get('London_Ever_Swept_High', False) or m15_bar.get('Asia_Ever_Swept_High', False) or m15_bar.get('Sweep_High', False)
+                    swept_low = m15_bar.get('London_Ever_Swept_Low', False) or m15_bar.get('Asia_Ever_Swept_Low', False) or m15_bar.get('Sweep_Low', False)
                     
-            # 3. Look for New Setups
-            active_session = m15_bar['Active_Session']
-            if not pending_setup and not active_trade:
-                is_in_window = True
-                # if self.pair_name in OPTIMAL_WINDOWS:
-                #     w_start, w_end = OPTIMAL_WINDOWS[self.pair_name]
-                #     h = m1_dt.hour
-                #     if w_start <= w_end:
-                #         is_in_window = (w_start <= h <= w_end)
-                #     else:
-                #         is_in_window = (h >= w_start) or (h <= w_end)
-                        
-                if active_session in self.target_sessions and is_in_window:
-                    if self.use_amcc:
-                        is_active, ratio, reason = self.session_analyzer.is_session_active(m1_dt, active_session)
-                        if not is_active:
-                            continue
+                # ─── TRIGGER 1: SHORT SWEEP DETECTED ───
+                # Bearish M15 Trend + In Premium + High Swept
+                if m15_trend == 'bearish' and in_premium and swept_high:
+                    if awaiting_choch != 'Short':
+                        awaiting_choch = 'Short'
+                        sweep_extreme_price = m1_h
+                        sweep_time = m1_dt
+                    else:
+                        if m1_h > sweep_extreme_price:
+                            sweep_extreme_price = m1_h
                             
-                    # STRICT GEOGRAPHICAL SWEEPS ONLY (No PDH/PDL bypasses)
-                    swept_high = False
-                    swept_low = False
-                    
-                    if active_session == 'London':
-                        swept_high = m15_bar['Asia_Swept_High']
-                        swept_low = m15_bar['Asia_Swept_Low']
-                    elif active_session == 'NY':
-                        swept_high = m15_bar['London_Swept_High']
-                        swept_low = m15_bar['London_Swept_Low']
-                    elif active_session == 'Asia':
-                        swept_high = m15_bar['NY_Swept_High']
-                        swept_low = m15_bar['NY_Swept_Low']
-                                 
-                    # 1. Check for Sweep + M1 CHoCH (aligned with M15 Trend)
-                    if m15_bar['Trend'] == 'bearish' and swept_high and m1_bar['CHoCH']:
-                        self.awaiting_short_fvg = True
-                        self.awaiting_short_sl = m1_bar['Active_High']
-                        self.awaiting_short_time = m1_dt
-                        self.awaiting_short_features = {
-                            'session': active_session,
-                            'swept_high': swept_high,
-                            'amcc_bearish_score': self.condition_calculator.bearish_score if hasattr(self.condition_calculator, 'bearish_score') else 0,
-                            'hour_of_day': m1_dt.hour,
-                            'day_of_week': m1_dt.dayofweek
-                        }
-                        
-                    if m15_bar['Trend'] == 'bullish' and swept_low and m1_bar['CHoCH']:
-                        self.awaiting_long_fvg = True
-                        self.awaiting_long_sl = m1_bar['Active_Low']
-                        self.awaiting_long_time = m1_dt
-                        self.awaiting_long_features = {
-                            'session': active_session,
-                            'swept_low': swept_low,
-                            'amcc_bullish_score': self.condition_calculator.bullish_score if hasattr(self.condition_calculator, 'bullish_score') else 0,
-                            'hour_of_day': m1_dt.hour,
-                            'day_of_week': m1_dt.dayofweek
-                        }
-                        
-                    # 2. Check for M5 FVG Entry within 15 minutes
-                    if self.awaiting_short_fvg:
-                        if (m1_dt - self.awaiting_short_time).total_seconds() > 900:
-                            self.awaiting_short_fvg = False
-                        else:
-                            m5_dt = m1_dt.floor('5min')
-                            prev_m5_dt = m5_dt - pd.Timedelta(minutes=5)
-                            prev2_m5_dt = m5_dt - pd.Timedelta(minutes=10)
+                # ─── TRIGGER 2: LONG SWEEP DETECTED ───
+                # Bullish M15 Trend + In Discount + Low Swept
+                elif m15_trend == 'bullish' and in_discount and swept_low:
+                    if awaiting_choch != 'Long':
+                        awaiting_choch = 'Long'
+                        sweep_extreme_price = m1_l
+                        sweep_time = m1_dt
+                    else:
+                        if m1_l < sweep_extreme_price:
+                            sweep_extreme_price = m1_l
+
+                # ─── CHECK 1M LOWER TIMEFRAME CONFIRMATION ───
+                if awaiting_choch == 'Short':
+                    # Allow up to 45 minutes for M1 reversal confirmation
+                    if (m1_dt - sweep_time).total_seconds() > 2700:
+                        awaiting_choch = None
+                    else:
+                        # Update sweep extreme if price made a higher high
+                        if m1_h > sweep_extreme_price:
+                            sweep_extreme_price = m1_h
                             
-                            for check_dt in [prev_m5_dt, prev2_m5_dt]:
-                                if check_dt in m5_records:
-                                    m5_bar = m5_records[check_dt]
-                                    if m5_bar.get('Bearish_FVG', False):
-                                        pending_setup = 'Short'
-                                        pending_ob_high = m5_bar['Bearish_OB_High']
-                                        pending_ob_low = m5_bar['Bearish_OB_Low']
-                                        pending_sl = self.awaiting_short_sl
-                                        pending_features = self.awaiting_short_features
-                                        pending_features['fvg_size'] = pending_ob_high - pending_ob_low
-                                        self.awaiting_short_fvg = False
-                                        
-                                        if self.use_amcc:
-                                            is_fav, reason, quality = self.condition_calculator.evaluate_condition(m1_dt, 'short', pending_features['fvg_size'])
-                                            if not is_fav:
-                                                pending_setup = None
-                                                pending_features['amcc_reason'] = reason
-                                            else:
-                                                pending_features['amcc_quality'] = quality
-                                        break
-                                        
-                            if pending_setup == 'Short' and self.use_ml_filter and self.ml_model:
-                                session_map = {'Asia': 0, 'London': 1, 'NY': 2}
-                                X = pd.DataFrame([{
-                                    'session': session_map.get(active_session, 0),
-                                    'day_of_week': m1_dt.dayofweek,
-                                    'hour': m1_dt.hour,
-                                    'setup_type': 0,
-                                    'fvg_size': pending_ob_high - pending_ob_low
-                                }])
-                                probs = self.ml_model.predict_proba(X)[0]
-                                if len(probs) > 1 and probs[1] >= 0.5:
-                                    pass # Approved
-                                else:
-                                    pending_setup = None
+                        # Look for 1M Bearish FVG / OB created in displacement
+                        if m1_bear_fvg[i]:
+                            recent_displacement_fvg = m1_bear_ob_l[i] if not np.isnan(m1_bear_ob_l[i]) else m1_c
                             
-                    if self.awaiting_long_fvg:
-                        if (m1_dt - self.awaiting_long_time).total_seconds() > 900:
-                            self.awaiting_long_fvg = False
-                        else:
-                            m5_dt = m1_dt.floor('5min')
-                            prev_m5_dt = m5_dt - pd.Timedelta(minutes=5)
-                            prev2_m5_dt = m5_dt - pd.Timedelta(minutes=10)
+                        # 1M CHoCH with Body Close!
+                        if m1_choch[i] or (m1_trends[i] == 'bearish' and recent_displacement_fvg is not None):
+                            entry_lvl = recent_displacement_fvg if recent_displacement_fvg is not None else m1_c
+                            sl_lvl = sweep_extreme_price + (1.5 * pip_size)
+                            pending_setup = {
+                                'type': 'short',
+                                'time': m1_dt,
+                                'entry_price': entry_lvl,
+                                'sl': sl_lvl
+                            }
+                            awaiting_choch = None
+                            recent_displacement_fvg = None
                             
-                            for check_dt in [prev_m5_dt, prev2_m5_dt]:
-                                if check_dt in m5_records:
-                                    m5_bar = m5_records[check_dt]
-                                    if m5_bar.get('Bullish_FVG', False):
-                                        pending_setup = 'Long'
-                                        pending_ob_high = m5_bar['Bullish_OB_High']
-                                        pending_ob_low = m5_bar['Bullish_OB_Low']
-                                        pending_sl = self.awaiting_long_sl
-                                        pending_features = self.awaiting_long_features
-                                        pending_features['fvg_size'] = pending_ob_high - pending_ob_low
-                                        self.awaiting_long_fvg = False
-                                        
-                                        if self.use_amcc:
-                                            is_fav, reason, quality = self.condition_calculator.evaluate_condition(m1_dt, 'long', pending_features['fvg_size'])
-                                            if not is_fav:
-                                                pending_setup = None
-                                                pending_features['amcc_reason'] = reason
-                                            else:
-                                                pending_features['amcc_quality'] = quality
-                                        break
-                                        
-                            if pending_setup == 'Long' and self.use_ml_filter and self.ml_model:
-                                session_map = {'Asia': 0, 'London': 1, 'NY': 2}
-                                X = pd.DataFrame([{
-                                    'session': session_map.get(active_session, 0),
-                                    'day_of_week': m1_dt.dayofweek,
-                                    'hour': m1_dt.hour,
-                                    'setup_type': 1,
-                                    'fvg_size': pending_ob_high - pending_ob_low
-                                }])
-                                probs = self.ml_model.predict_proba(X)[0]
-                                if len(probs) > 1 and probs[1] >= 0.5:
-                                    pass # Approved
-                                else:
-                                    pending_setup = None
+                elif awaiting_choch == 'Long':
+                    if (m1_dt - sweep_time).total_seconds() > 2700:
+                        awaiting_choch = None
+                    else:
+                        if m1_l < sweep_extreme_price:
+                            sweep_extreme_price = m1_l
                             
+                        if m1_bull_fvg[i]:
+                            recent_displacement_fvg = m1_bull_ob_h[i] if not np.isnan(m1_bull_ob_h[i]) else m1_c
+                            
+                        # 1M CHoCH with Body Close!
+                        if m1_choch[i] or (m1_trends[i] == 'bullish' and recent_displacement_fvg is not None):
+                            entry_lvl = recent_displacement_fvg if recent_displacement_fvg is not None else m1_c
+                            sl_lvl = sweep_extreme_price - (1.5 * pip_size)
+                            pending_setup = {
+                                'type': 'long',
+                                'time': m1_dt,
+                                'entry_price': entry_lvl,
+                                'sl': sl_lvl
+                            }
+                            awaiting_choch = None
+                            recent_displacement_fvg = None
+
         self.stats = self._calculate_stats()
         self._print_report()
+        return self.stats
         
     def _calculate_stats(self):
         total_trades = len(self.trades)
@@ -408,7 +430,7 @@ class TickBacktestEngine:
         return {'Total Trades': total_trades, 'Win Rate': win_rate, 'Net Profit': profit_pct, 'trades': self.trades}
         
     def _print_report(self):
-        print(f"\n--- Pure Lewis Kelly Engine ({self.execution_mode}) [{'-'.join(self.target_sessions)}] ---")
+        print(f"\n--- Lewis Kelly Artificial Trading Brain Report [{'-'.join(self.target_sessions)}] ---")
         total_trades = len(self.trades)
         if total_trades == 0:
             print("No trades executed.")
@@ -417,10 +439,12 @@ class TickBacktestEngine:
         wins = sum(1 for t in self.trades if t['pnl'] > 0)
         win_rate = (wins / total_trades) * 100
         total_pnl = sum(t['pnl'] for t in self.trades)
+        profit_pct = (total_pnl / self.initial_capital) * 100
         
         print(f"Total Trades: {total_trades}")
+        print(f"Wins: {wins} | Losses: {total_trades - wins}")
         print(f"Win Rate: {win_rate:.2f}%")
         print(f"Starting Capital: ${self.initial_capital:.2f}")
         print(f"Ending Capital: ${self.capital:.2f}")
-        print(f"Total Net Profit: ${total_pnl:.2f} ({total_pnl/self.initial_capital * 100:.2f}%)")
+        print(f"Total Net Profit: ${total_pnl:.2f} ({profit_pct:.2f}%)")
         print("----------------------------------------------------------------------")

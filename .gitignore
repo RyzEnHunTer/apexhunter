@@ -1,37 +1,73 @@
-# Python
+# =====================================================================
+# Git Ignore Configuration - Master Trading Bot System
+# =====================================================================
+
+# Python Cache & Bytecode
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
 *.pyd
 
-# Bot State and Memories
+# Sensitive Accounts, Credentials & Private Keys
+**/live/bot_accounts_config.json
+**/live/config.json
+*.env
+.env*
 bot_state*.json
 bot_state*.json.tmp
-lk_system/live/config.json
 
-# Logs
+# Logs, Audits & State Dumps
 logs/
-lk_system/live/logs/
+**/logs/
 *.log
+**/*.log
+
+# Candle Data, Tick Data & Large Replay Stores (NEVER UPLOAD)
+candle data/
+**/candle data/
+tick data/
+**/tick data/
+tick_cache/
+**/tick_cache/
+data/
+**/data/
+data_jan_nov_2026/
+**/data_jan_nov_2026/
+*.parquet
+**/*.parquet
+*.csv
+**/*.csv
+*.pkl
+**/*.pkl
+
+# Archives & Large Compressed Binaries
+*.rar
+**/*.rar
+*.zip
+**/*.zip
+*.tar.gz
+*.7z
+
+# Scratch & Temporary Experiments
+scratch/
+**/scratch/
+qpe/
+web/
+.gemini/
+
+# Text files except requirements
 *.txt
 !requirements.txt
-
-# Caches and Data
-data/
-candle data/
-*.csv
-*.rar
-*.zip
-*.pkl
-
-.gemini/
+!*/requirements.txt
 
 # Virtual Environments
 venv/
 env/
 ENV/
+.venv/
 
-# OS Files
+# Operating System Files
 .DS_Store
 Thumbs.db
+desktop.ini
 node_modules/

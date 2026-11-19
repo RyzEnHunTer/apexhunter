@@ -33,7 +33,10 @@ def fetch_ticks(symbol, start_date, end_date, output_filename):
     
     final_df = df[['<DATE>', '<TIME>', '<BID>']]
     
-    out_path = os.path.join(r"D:\FOREX\FOREX\candle data", output_filename)
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candle_dir = os.path.join(project_root, "candle data")
+    os.makedirs(candle_dir, exist_ok=True)
+    out_path = os.path.join(candle_dir, output_filename)
     print(f"Saving to {out_path}...")
     final_df.to_csv(out_path, sep='\t', index=False)
     print("Done.\n")

@@ -67,8 +67,8 @@ def run_pure_strategy_scan():
         'April-July': '_april_to_july_ticks.csv'
     }
     
-    data_dir = "D:/FOREX/FOREX/candle data"
-    report_path = r"C:\Users\rafta\.gemini\antigravity-ide\brain\d61cef1c-09e3-423d-a794-751ac594c159\optimal_windows_performance.md"
+    data_dir = os.path.join(PROJECT_ROOT, "candle data")
+    report_path = os.path.join(PROJECT_ROOT, "optimal_windows_performance.md")
     
     tasks = []
     for pair in pairs:

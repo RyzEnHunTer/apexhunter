@@ -5,8 +5,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
 
-# Create directory if doesn't exist
-os.makedirs('d:/FOREX/FOREX/lk_system/experiments', exist_ok=True)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+os.makedirs(CURRENT_DIR, exist_ok=True)
 
 # 1. Fetch Data
 print("Fetching EURUSD data...")
@@ -199,6 +199,6 @@ fig.add_trace(go.Scatter(x=sub_atr.index, y=sub_atr['ATR_Low'], mode='markers',
 fig.update_layout(height=1200, title_text="Market Structure Mapping Comparison: EURUSD M15",
                   plot_bgcolor='#1e1e1e', paper_bgcolor='#1e1e1e', font=dict(color='white'))
 
-out_path = 'd:/FOREX/FOREX/lk_system/experiments/structure_visualization.html'
+out_path = os.path.join(CURRENT_DIR, 'structure_visualization.html')
 fig.write_html(out_path)
 print(f"Chart saved to {out_path}")

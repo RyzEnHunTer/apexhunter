@@ -3,11 +3,19 @@ import glob
 import pandas as pd
 import sys
 
-sys.path.append('d:/FOREX/FOREX')
-from lk_system.backtest.tick_engine import TickBacktestEngine
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+try:
+    from backtest.tick_engine import TickBacktestEngine
+except ImportError:
+    from lk_system.backtest.tick_engine import TickBacktestEngine
 
 def run_portfolio(month_pattern="*jan to feb ticks*.csv", allowed_pairs=None):
-    data_dir = r"D:\FOREX\FOREX\candle data"
+    data_dir = os.path.join(os.path.dirname(PROJECT_ROOT), "candle data")
+    if not os.path.exists(data_dir):
+        data_dir = os.path.join(PROJECT_ROOT, "candle data")
     files = glob.glob(os.path.join(data_dir, month_pattern))
     
     if not files:

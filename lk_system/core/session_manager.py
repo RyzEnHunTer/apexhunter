@@ -4,25 +4,24 @@ import numpy as np
 
 class SessionManager:
     """
-    Tracks Lewis Kelly's Session Killzones.
-    Expects timestamps in US/Eastern timezone.
+    Tracks Lewis Kelly's Session Killzones & Liquidity Extremes.
+    Expects timestamps localized or convertible to US/Eastern timezone.
     
     Killzones (EST):
-    - Asia: 20:00 - 00:00 (8 PM - Midnight)
-    - London: 02:00 - 05:00 (2 AM - 5 AM)
-    - New York: 07:00 - 10:00 (7 AM - 10 AM)
+    - Asia Session: 19:00 - 01:00 (or 20:00 - 00:00)
+    - London Killzone: 02:00 - 05:00 (2 AM - 5 AM)
+    - New York Killzone: 07:00 - 10:00 (7 AM - 10 AM)
     """
-    
     def __init__(self):
-        # We store the high/low of each session for the current trading day
+        self.reset()
+        
+    def reset(self):
         self.daily_sessions = {
             'Asia': {'high': 0.0, 'low': float('inf'), 'swept_high': False, 'swept_low': False},
             'London': {'high': 0.0, 'low': float('inf'), 'swept_high': False, 'swept_low': False},
             'NY': {'high': 0.0, 'low': float('inf'), 'swept_high': False, 'swept_low': False}
         }
-        self.previous_ny = {
-            'high': 0.0, 'low': float('inf')
-        }
+        self.previous_ny = {'high': 0.0, 'low': float('inf')}
         self.daily_high = 0.0
         self.daily_low = float('inf')
         self.pdh = 0.0
@@ -30,7 +29,7 @@ class SessionManager:
         self.current_date = None
 
     def _is_asia(self, dt):
-        return dt.hour >= 20 or dt.hour == 0
+        return dt.hour >= 19 or dt.hour < 1
 
     def _is_london(self, dt):
         return 2 <= dt.hour < 5
@@ -38,33 +37,61 @@ class SessionManager:
     def _is_ny(self, dt):
         return 7 <= dt.hour < 10
 
-    def update(self, df):
-        """
-        Processes a dataframe and returns a dataframe with Session info.
-        Assumes df.index is localized to 'US/Eastern'.
-        """
-        df = df.copy()
-        df['Active_Session'] = 'None'
-        df['Asia_High'] = np.nan
-        df['Asia_Low'] = np.nan
-        df['London_High'] = np.nan
-        df['London_Low'] = np.nan
-        df['NY_High'] = np.nan
-        df['NY_Low'] = np.nan
-        df['PDH'] = np.nan
-        df['PDL'] = np.nan
-        df['PDH_Swept'] = False
-        df['PDL_Swept'] = False
-        
-        for i in range(len(df)):
-            dt = df.index[i]
-            # Reset daily tracked sessions at 5 PM EST (New York close / Forex new day)
-            # Actually, standard Forex day resets at 17:00 EST. 
-            current_trade_day = dt.date() if dt.hour < 17 else (dt + pd.Timedelta(days=1)).date()
+    def update(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
             
-            if self.current_date != current_trade_day:
-                self.current_date = current_trade_day
-                self.previous_ny = {'high': self.daily_sessions['NY']['high'], 'low': self.daily_sessions['NY']['low']}
+        df = df.copy()
+        n = len(df)
+        
+        active_session = np.full(n, 'None', dtype=object)
+        asia_high = np.full(n, np.nan)
+        asia_low = np.full(n, np.nan)
+        london_high = np.full(n, np.nan)
+        london_low = np.full(n, np.nan)
+        ny_high = np.full(n, np.nan)
+        ny_low = np.full(n, np.nan)
+        
+        pdh_arr = np.full(n, np.nan)
+        pdl_arr = np.full(n, np.nan)
+        
+        # Immediate active bar sweeps (wick rejection)
+        asia_swept_h = np.zeros(n, dtype=bool)
+        asia_swept_l = np.zeros(n, dtype=bool)
+        london_swept_h = np.zeros(n, dtype=bool)
+        london_swept_l = np.zeros(n, dtype=bool)
+        
+        # Persistent state for the entire active session
+        asia_ever_swept_h = np.zeros(n, dtype=bool)
+        asia_ever_swept_l = np.zeros(n, dtype=bool)
+        london_ever_swept_h = np.zeros(n, dtype=bool)
+        london_ever_swept_l = np.zeros(n, dtype=bool)
+        
+        pdh_swept_arr = np.zeros(n, dtype=bool)
+        pdl_swept_arr = np.zeros(n, dtype=bool)
+        
+        highs = df['High'].values
+        lows = df['Low'].values
+        closes = df['Close'].values
+        timestamps = df.index
+        
+        self.reset()
+        
+        for i in range(n):
+            dt = timestamps[i]
+            curr_h = highs[i]
+            curr_l = lows[i]
+            curr_c = closes[i]
+            
+            # Forex trading day rolls over at 17:00 EST
+            trade_day = dt.date() if dt.hour < 17 else (dt + pd.Timedelta(days=1)).date()
+            
+            if self.current_date != trade_day:
+                self.current_date = trade_day
+                self.previous_ny = {
+                    'high': self.daily_sessions['NY']['high'],
+                    'low': self.daily_sessions['NY']['low']
+                }
                 self.pdh = self.daily_high
                 self.pdl = self.daily_low
                 self.daily_high = 0.0
@@ -75,75 +102,121 @@ class SessionManager:
                     'London': {'high': 0.0, 'low': float('inf'), 'swept_high': False, 'swept_low': False},
                     'NY': {'high': 0.0, 'low': float('inf'), 'swept_high': False, 'swept_low': False}
                 }
-
-            curr_high = df['High'].iloc[i]
-            curr_low = df['Low'].iloc[i]
+                
+            if curr_h > self.daily_high:
+                self.daily_high = curr_h
+            if curr_l < self.daily_low:
+                self.daily_low = curr_l
+                
+            sess_name = 'None'
             
-            if curr_high > self.daily_high:
-                self.daily_high = curr_high
-            if curr_low < self.daily_low:
-                self.daily_low = curr_low
-
-            # 1. Update Asia Session
+            # 1. Asia Session
             if self._is_asia(dt):
-                df.loc[dt, 'Active_Session'] = 'Asia'
-                if curr_high > self.daily_sessions['Asia']['high']:
-                    self.daily_sessions['Asia']['high'] = curr_high
-                if curr_low < self.daily_sessions['Asia']['low']:
-                    self.daily_sessions['Asia']['low'] = curr_low
+                sess_name = 'Asia'
+                if curr_h > self.daily_sessions['Asia']['high']:
+                    self.daily_sessions['Asia']['high'] = curr_h
+                if curr_l < self.daily_sessions['Asia']['low']:
+                    self.daily_sessions['Asia']['low'] = curr_l
                     
-                # Check for Previous NY Sweeps during Asia
-                if curr_high > self.previous_ny['high'] and self.previous_ny['high'] != 0:
-                    self.daily_sessions['NY']['swept_high'] = True # Storing NY swept status
-                if curr_low < self.previous_ny['low'] and self.previous_ny['low'] != float('inf'):
-                    self.daily_sessions['NY']['swept_low'] = True
-            
-            # 2. Update London Session
+            # 2. London Killzone
             elif self._is_london(dt):
-                df.loc[dt, 'Active_Session'] = 'London'
-                if curr_high > self.daily_sessions['London']['high']:
-                    self.daily_sessions['London']['high'] = curr_high
-                if curr_low < self.daily_sessions['London']['low']:
-                    self.daily_sessions['London']['low'] = curr_low
+                sess_name = 'London'
+                if curr_h > self.daily_sessions['London']['high']:
+                    self.daily_sessions['London']['high'] = curr_h
+                if curr_l < self.daily_sessions['London']['low']:
+                    self.daily_sessions['London']['low'] = curr_l
                     
-                # Check for Asian Sweeps during London
-                if curr_high > self.daily_sessions['Asia']['high'] and self.daily_sessions['Asia']['high'] != 0:
+                # Check for Asia Session Sweeps
+                ah = self.daily_sessions['Asia']['high']
+                al = self.daily_sessions['Asia']['low']
+                if ah > 0 and curr_h > ah:
                     self.daily_sessions['Asia']['swept_high'] = True
-                if curr_low < self.daily_sessions['Asia']['low'] and self.daily_sessions['Asia']['low'] != float('inf'):
+                    if curr_c <= ah:
+                        asia_swept_h[i] = True
+                if al < float('inf') and curr_l < al:
                     self.daily_sessions['Asia']['swept_low'] = True
-
-            # 3. Update NY Session
+                    if curr_c >= al:
+                        asia_swept_l[i] = True
+                        
+            # 3. New York Killzone
             elif self._is_ny(dt):
-                df.loc[dt, 'Active_Session'] = 'NY'
-                if curr_high > self.daily_sessions['NY']['high']:
-                    self.daily_sessions['NY']['high'] = curr_high
-                if curr_low < self.daily_sessions['NY']['low']:
-                    self.daily_sessions['NY']['low'] = curr_low
+                sess_name = 'NY'
+                if curr_h > self.daily_sessions['NY']['high']:
+                    self.daily_sessions['NY']['high'] = curr_h
+                if curr_l < self.daily_sessions['NY']['low']:
+                    self.daily_sessions['NY']['low'] = curr_l
                     
-                # Check for London Sweeps during NY
-                if curr_high > self.daily_sessions['London']['high'] and self.daily_sessions['London']['high'] != 0:
+                # Check for London Sweeps
+                lh = self.daily_sessions['London']['high']
+                ll = self.daily_sessions['London']['low']
+                if lh > 0 and curr_h > lh:
                     self.daily_sessions['London']['swept_high'] = True
-                if curr_low < self.daily_sessions['London']['low'] and self.daily_sessions['London']['low'] != float('inf'):
+                    if curr_c <= lh:
+                        london_swept_h[i] = True
+                if ll < float('inf') and curr_l < ll:
                     self.daily_sessions['London']['swept_low'] = True
+                    if curr_c >= ll:
+                        london_swept_l[i] = True
+                        
+                # Also check Asia Sweeps if still unmitigated
+                ah = self.daily_sessions['Asia']['high']
+                al = self.daily_sessions['Asia']['low']
+                if ah > 0 and curr_h > ah:
+                    self.daily_sessions['Asia']['swept_high'] = True
+                    if curr_c <= ah:
+                        asia_swept_h[i] = True
+                if al < float('inf') and curr_l < al:
+                    self.daily_sessions['Asia']['swept_low'] = True
+                    if curr_c >= al:
+                        asia_swept_l[i] = True
 
-            # Write current session high/low to dataframe so the engine can read it easily
-            df.loc[dt, 'Asia_High'] = self.daily_sessions['Asia']['high']
-            df.loc[dt, 'Asia_Low'] = self.daily_sessions['Asia']['low']
-            df.loc[dt, 'London_High'] = self.daily_sessions['London']['high']
-            df.loc[dt, 'London_Low'] = self.daily_sessions['London']['low']
-            df.loc[dt, 'NY_High'] = self.previous_ny['high'] if self._is_asia(dt) else self.daily_sessions['NY']['high']
-            df.loc[dt, 'NY_Low'] = self.previous_ny['low'] if self._is_asia(dt) else self.daily_sessions['NY']['low']
-            df.loc[dt, 'Asia_Swept_High'] = self.daily_sessions['Asia']['swept_high']
-            df.loc[dt, 'Asia_Swept_Low'] = self.daily_sessions['Asia']['swept_low']
-            df.loc[dt, 'London_Swept_High'] = self.daily_sessions['London']['swept_high']
-            df.loc[dt, 'London_Swept_Low'] = self.daily_sessions['London']['swept_low']
-            df.loc[dt, 'NY_Swept_High'] = self.daily_sessions['NY']['swept_high']
-            df.loc[dt, 'NY_Swept_Low'] = self.daily_sessions['NY']['swept_low']
+            # Record persistent session status
+            asia_ever_swept_h[i] = self.daily_sessions['Asia']['swept_high']
+            asia_ever_swept_l[i] = self.daily_sessions['Asia']['swept_low']
+            london_ever_swept_h[i] = self.daily_sessions['London']['swept_high']
+            london_ever_swept_l[i] = self.daily_sessions['London']['swept_low']
+
+            # Check PDH / PDL sweeps
+            if self.pdh > 0 and curr_h > self.pdh:
+                if curr_c <= self.pdh:
+                    pdh_swept_arr[i] = True
+            if self.pdl < float('inf') and curr_l < self.pdl:
+                if curr_c >= self.pdl:
+                    pdl_swept_arr[i] = True
+                    
+            active_session[i] = sess_name
+            asia_high[i] = self.daily_sessions['Asia']['high'] if self.daily_sessions['Asia']['high'] > 0 else np.nan
+            asia_low[i] = self.daily_sessions['Asia']['low'] if self.daily_sessions['Asia']['low'] < float('inf') else np.nan
+            london_high[i] = self.daily_sessions['London']['high'] if self.daily_sessions['London']['high'] > 0 else np.nan
+            london_low[i] = self.daily_sessions['London']['low'] if self.daily_sessions['London']['low'] < float('inf') else np.nan
+            ny_high[i] = self.daily_sessions['NY']['high'] if self.daily_sessions['NY']['high'] > 0 else np.nan
+            ny_low[i] = self.daily_sessions['NY']['low'] if self.daily_sessions['NY']['low'] < float('inf') else np.nan
             
-            # PDH/PDL tracking
-            df.loc[dt, 'PDH'] = self.pdh
-            df.loc[dt, 'PDL'] = self.pdl
-            df.loc[dt, 'PDH_Swept'] = True if (curr_high > self.pdh and self.pdh != 0.0) else False
-            df.loc[dt, 'PDL_Swept'] = True if (curr_low < self.pdl and self.pdl != float('inf')) else False
-
+            pdh_arr[i] = self.pdh if self.pdh > 0 else np.nan
+            pdl_arr[i] = self.pdl if self.pdl < float('inf') else np.nan
+            
+        df['Active_Session'] = active_session
+        df['Asia_High'] = asia_high
+        df['Asia_Low'] = asia_low
+        df['London_High'] = london_high
+        df['London_Low'] = london_low
+        df['NY_High'] = ny_high
+        df['NY_Low'] = ny_low
+        df['PDH'] = pdh_arr
+        df['PDL'] = pdl_arr
+        
+        # Immediate active bar sweeps (wick rejection)
+        df['Asia_Swept_High'] = asia_swept_h
+        df['Asia_Swept_Low'] = asia_swept_l
+        df['London_Swept_High'] = london_swept_h
+        df['London_Swept_Low'] = london_swept_l
+        df['PDH_Swept'] = pdh_swept_arr
+        df['PDL_Swept'] = pdl_swept_arr
+        
+        # Persistent flags throughout session
+        df['Asia_Ever_Swept_High'] = asia_ever_swept_h
+        df['Asia_Ever_Swept_Low'] = asia_ever_swept_l
+        df['London_Ever_Swept_High'] = london_ever_swept_h
+        df['London_Ever_Swept_Low'] = london_ever_swept_l
+        
         return df

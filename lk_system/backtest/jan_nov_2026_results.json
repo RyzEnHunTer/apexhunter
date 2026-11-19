@@ -1,0 +1,1702 @@
+{
+  "EURUSD": {
+    "symbol": "EURUSD",
+    "initial_capital": 5000.0,
+    "final_capital": 7908.156340439723,
+    "net_profit": 2908.156340439723,
+    "net_profit_pct": 58.163126808794466,
+    "total_trades": 35,
+    "wins": 16,
+    "losses": 19,
+    "win_rate": 45.714285714285715,
+    "profit_factor": 3.2333701630186025,
+    "max_drawdown_dollar": 509.1679138164918,
+    "max_drawdown_pct": 6.793465209301,
+    "avg_win": 263.14340140166144,
+    "avg_loss": -68.53358326246631,
+    "avg_risk_pips": 8.094285714285196,
+    "monthly": {
+      "2026-01": {
+        "trades": 3,
+        "wins": 2,
+        "losses": 1,
+        "win_rate": 66.66666666666666,
+        "pnl": 356.8345599999983,
+        "return_pct": 7.136691199999966
+      },
+      "2026-02": {
+        "trades": 6,
+        "wins": 2,
+        "losses": 4,
+        "win_rate": 33.33333333333333,
+        "pnl": 381.38086612222867,
+        "return_pct": 7.627617322444573
+      },
+      "2026-03": {
+        "trades": 4,
+        "wins": 3,
+        "losses": 1,
+        "win_rate": 75.0,
+        "pnl": 662.5692429188484,
+        "return_pct": 13.25138485837697
+      },
+      "2026-04": {
+        "trades": 2,
+        "wins": 2,
+        "losses": 0,
+        "win_rate": 100.0,
+        "pnl": 526.0728110068828,
+        "return_pct": 10.521456220137656
+      },
+      "2026-05": {
+        "trades": 3,
+        "wins": 1,
+        "losses": 2,
+        "win_rate": 33.33333333333333,
+        "pnl": 242.34026505396577,
+        "return_pct": 4.846805301079316
+      },
+      "2026-06": {
+        "trades": 2,
+        "wins": 1,
+        "losses": 1,
+        "win_rate": 50.0,
+        "pnl": 325.76834553743134,
+        "return_pct": 6.515366910748627
+      },
+      "2026-07": {
+        "trades": 4,
+        "wins": 0,
+        "losses": 4,
+        "win_rate": 0.0,
+        "pnl": -295.33156888589224,
+        "return_pct": -5.9066313777178445
+      },
+      "2026-08": {
+        "trades": 3,
+        "wins": 0,
+        "losses": 3,
+        "win_rate": 0.0,
+        "pnl": -213.8363449305996,
+        "return_pct": -4.276726898611992
+      },
+      "2026-09": {
+        "trades": 5,
+        "wins": 3,
+        "losses": 2,
+        "win_rate": 60.0,
+        "pnl": 728.6985238396484,
+        "return_pct": 14.573970476792967
+      },
+      "2026-10": {
+        "trades": 3,
+        "wins": 2,
+        "losses": 1,
+        "win_rate": 66.66666666666666,
+        "pnl": 193.65963977721205,
+        "return_pct": 3.873192795544241
+      }
+    },
+    "trades_log": [
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-01-08T03:28:00-05:00",
+        "entry_price": 1.16739,
+        "original_sl": 1.16846,
+        "sl": 1.167176,
+        "risk": 0.0010700000000001264,
+        "risk_pips": 10.700000000001264,
+        "remaining_weight": 0.39999999999999997,
+        "realized_pnl": 123.99999999999834,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "exit_time": "2026-01-12T03:53:00-05:00",
+        "exit_price": 1.167176,
+        "pnl": 123.99999999999834
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-01-15T07:51:00-05:00",
+        "entry_price": 1.16379,
+        "original_sl": 1.16449,
+        "sl": 1.16365,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 286.9439999999999,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-01-18T19:05:00-05:00",
+        "exit_price": 1.1581900000000007,
+        "pnl": 286.9439999999999
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-01-27T04:17:00-05:00",
+        "entry_price": 1.18749,
+        "original_sl": 1.18671,
+        "sl": 1.18671,
+        "risk": 0.0007800000000000029,
+        "risk_pips": 7.800000000000029,
+        "remaining_weight": 1.0,
+        "realized_pnl": -54.10943999999998,
+        "partials_taken": [],
+        "exit_time": "2026-01-27T04:56:00-05:00",
+        "exit_price": 1.18671,
+        "pnl": -54.10943999999998
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-02-02T07:44:00-05:00",
+        "entry_price": 1.19504,
+        "original_sl": 1.19574,
+        "sl": 1.1949,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 299.9827353599999,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-02-02T07:45:00-05:00",
+        "exit_price": 1.1894400000000007,
+        "pnl": 299.9827353599999
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-02-02T07:58:00-05:00",
+        "entry_price": 1.18668,
+        "original_sl": 1.1873799999999999,
+        "sl": 1.18654,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 316.7817685401598,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-02-02T11:13:00-05:00",
+        "exit_price": 1.1810800000000006,
+        "pnl": 316.7817685401598
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-02-03T03:37:00-05:00",
+        "entry_price": 1.181,
+        "original_sl": 1.18179,
+        "sl": 1.18179,
+        "risk": 0.0007899999999998464,
+        "risk_pips": 7.899999999998464,
+        "remaining_weight": 1.0,
+        "realized_pnl": -59.735990639001564,
+        "partials_taken": [],
+        "exit_time": "2026-02-03T04:14:00-05:00",
+        "exit_price": 1.18179,
+        "pnl": -59.735990639001564
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-02-12T09:31:00-05:00",
+        "entry_price": 1.18943,
+        "original_sl": 1.18785,
+        "sl": 1.18785,
+        "risk": 0.0015799999999999148,
+        "risk_pips": 15.799999999999148,
+        "remaining_weight": 1.0,
+        "realized_pnl": -59.138630732611546,
+        "partials_taken": [],
+        "exit_time": "2026-02-12T09:37:00-05:00",
+        "exit_price": 1.18785,
+        "pnl": -59.138630732611546
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-02-12T09:41:00-05:00",
+        "entry_price": 1.18775,
+        "original_sl": 1.1870500000000002,
+        "sl": 1.1870500000000002,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 1.0,
+        "realized_pnl": -58.54724442528543,
+        "partials_taken": [],
+        "exit_time": "2026-02-12T09:51:00-05:00",
+        "exit_price": 1.1870500000000002,
+        "pnl": -58.54724442528543
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-02-13T02:40:00-05:00",
+        "entry_price": 1.18598,
+        "original_sl": 1.1852800000000001,
+        "sl": 1.1852800000000001,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 1.0,
+        "realized_pnl": -57.96177198103257,
+        "partials_taken": [],
+        "exit_time": "2026-02-13T04:02:00-05:00",
+        "exit_price": 1.1852800000000001,
+        "pnl": -57.96177198103257
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-03-18T08:30:00-04:00",
+        "entry_price": 1.15325,
+        "original_sl": 1.15456,
+        "sl": 1.15456,
+        "risk": 0.0013099999999999223,
+        "risk_pips": 13.099999999999223,
+        "remaining_weight": 1.0,
+        "realized_pnl": -57.38215426122225,
+        "partials_taken": [],
+        "exit_time": "2026-03-18T09:10:00-04:00",
+        "exit_price": 1.15456,
+        "pnl": -57.38215426122225
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-03-18T09:27:00-04:00",
+        "entry_price": 1.15504,
+        "original_sl": 1.15574,
+        "sl": 1.1549,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 318.12666322421614,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-03-18T11:12:00-04:00",
+        "exit_price": 1.1494400000000007,
+        "pnl": 318.12666322421614
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-03-20T09:52:00-04:00",
+        "entry_price": 1.15746,
+        "original_sl": 1.15818,
+        "sl": 1.157316,
+        "risk": 0.0007200000000000539,
+        "risk_pips": 7.200000000000539,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 335.94175636477223,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-03-23T07:20:00-04:00",
+        "exit_price": 1.1516999999999995,
+        "pnl": 335.94175636477223
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-03-27T03:26:00-04:00",
+        "entry_price": 1.15391,
+        "original_sl": 1.15473,
+        "sl": 1.153746,
+        "risk": 0.0008200000000000429,
+        "risk_pips": 8.20000000000043,
+        "remaining_weight": 0.7,
+        "realized_pnl": 65.8829775910823,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ]
+        ],
+        "tier_3.0": true,
+        "exit_time": "2026-03-27T13:23:00-04:00",
+        "exit_price": 1.153746,
+        "pnl": 65.8829775910823
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-04-10T07:21:00-04:00",
+        "entry_price": 1.16831,
+        "original_sl": 1.1675,
+        "sl": 1.168472,
+        "risk": 0.0008099999999999774,
+        "risk_pips": 8.099999999999774,
+        "remaining_weight": 0.39999999999999997,
+        "realized_pnl": 158.7394597922186,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "exit_time": "2026-04-12T20:05:00-04:00",
+        "exit_price": 1.168472,
+        "pnl": 158.7394597922186
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-04-13T09:37:00-04:00",
+        "entry_price": 1.16852,
+        "original_sl": 1.16782,
+        "sl": 1.16866,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 367.3333512146643,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-04-13T17:31:00-04:00",
+        "exit_price": 1.1741199999999994,
+        "pnl": 367.3333512146643
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-05-05T08:43:00-04:00",
+        "entry_price": 1.16915,
+        "original_sl": 1.16788,
+        "sl": 1.1694039999999999,
+        "risk": 0.0012699999999998823,
+        "risk_pips": 12.699999999998823,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 387.90401888268553,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-05-06T09:53:00-04:00",
+        "exit_price": 1.179309999999999,
+        "pnl": 387.90401888268553
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-05-14T08:50:00-04:00",
+        "entry_price": 1.17121,
+        "original_sl": 1.17032,
+        "sl": 1.17032,
+        "risk": 0.0008900000000000574,
+        "risk_pips": 8.900000000000574,
+        "remaining_weight": 1.0,
+        "realized_pnl": -73.14761498930642,
+        "partials_taken": [],
+        "exit_time": "2026-05-14T10:27:00-04:00",
+        "exit_price": 1.17032,
+        "pnl": -73.14761498930642
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-05-18T03:25:00-04:00",
+        "entry_price": 1.16199,
+        "original_sl": 1.16276,
+        "sl": 1.16276,
+        "risk": 0.0007699999999999374,
+        "risk_pips": 7.699999999999374,
+        "remaining_weight": 1.0,
+        "realized_pnl": -72.41613883941336,
+        "partials_taken": [],
+        "exit_time": "2026-05-18T05:14:00-04:00",
+        "exit_price": 1.16276,
+        "pnl": -72.41613883941336
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-06-10T03:49:00-04:00",
+        "entry_price": 1.15495,
+        "original_sl": 1.1556499999999998,
+        "sl": 1.1556499999999998,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 1.0,
+        "realized_pnl": -71.69197745101923,
+        "partials_taken": [],
+        "exit_time": "2026-06-10T05:12:00-04:00",
+        "exit_price": 1.1556499999999998,
+        "pnl": -71.69197745101923
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-06-22T08:45:00-04:00",
+        "entry_price": 1.14575,
+        "original_sl": 1.14653,
+        "sl": 1.145594,
+        "risk": 0.0007800000000000029,
+        "risk_pips": 7.800000000000029,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 397.46032298845057,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-06-23T09:53:00-04:00",
+        "exit_price": 1.13951,
+        "pnl": 397.46032298845057
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-07-17T07:15:00-04:00",
+        "entry_price": 1.1441299999999999,
+        "original_sl": 1.14343,
+        "sl": 1.14343,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 1.0,
+        "realized_pnl": -74.94966090639355,
+        "partials_taken": [],
+        "exit_time": "2026-07-17T09:21:00-04:00",
+        "exit_price": 1.14343,
+        "pnl": -74.94966090639355
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-07-20T07:40:00-04:00",
+        "entry_price": 1.14399,
+        "original_sl": 1.1432900000000001,
+        "sl": 1.1432900000000001,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 1.0,
+        "realized_pnl": -74.20016429732961,
+        "partials_taken": [],
+        "exit_time": "2026-07-20T08:07:00-04:00",
+        "exit_price": 1.1432900000000001,
+        "pnl": -74.20016429732961
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-07-22T09:24:00-04:00",
+        "entry_price": 1.14087,
+        "original_sl": 1.13979,
+        "sl": 1.13979,
+        "risk": 0.0010799999999999699,
+        "risk_pips": 10.799999999999699,
+        "remaining_weight": 1.0,
+        "realized_pnl": -73.45816265435631,
+        "partials_taken": [],
+        "exit_time": "2026-07-23T10:28:00-04:00",
+        "exit_price": 1.13979,
+        "pnl": -73.45816265435631
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-07-28T07:50:00-04:00",
+        "entry_price": 1.13707,
+        "original_sl": 1.13777,
+        "sl": 1.13777,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 1.0,
+        "realized_pnl": -72.72358102781276,
+        "partials_taken": [],
+        "exit_time": "2026-07-28T13:30:00-04:00",
+        "exit_price": 1.13777,
+        "pnl": -72.72358102781276
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-08-12T08:24:00-04:00",
+        "entry_price": 1.1541,
+        "original_sl": 1.1534,
+        "sl": 1.1534,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 1.0,
+        "realized_pnl": -71.99634521753462,
+        "partials_taken": [],
+        "exit_time": "2026-08-12T08:52:00-04:00",
+        "exit_price": 1.1534,
+        "pnl": -71.99634521753462
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-08-25T09:42:00-04:00",
+        "entry_price": 1.16639,
+        "original_sl": 1.16566,
+        "sl": 1.16566,
+        "risk": 0.0007300000000001194,
+        "risk_pips": 7.300000000001194,
+        "remaining_weight": 1.0,
+        "realized_pnl": -71.27638176535929,
+        "partials_taken": [],
+        "exit_time": "2026-08-26T11:57:00-04:00",
+        "exit_price": 1.16566,
+        "pnl": -71.27638176535929
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-08-27T04:53:00-04:00",
+        "entry_price": 1.1652799999999999,
+        "original_sl": 1.16458,
+        "sl": 1.16458,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 1.0,
+        "realized_pnl": -70.5636179477057,
+        "partials_taken": [],
+        "exit_time": "2026-08-27T08:03:00-04:00",
+        "exit_price": 1.16458,
+        "pnl": -70.5636179477057
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-09-21T07:16:00-04:00",
+        "entry_price": 1.16239,
+        "original_sl": 1.16309,
+        "sl": 1.16225,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 391.2046979020802,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-09-21T07:17:00-04:00",
+        "exit_price": 1.1567900000000007,
+        "pnl": 391.2046979020802
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-09-21T07:23:00-04:00",
+        "entry_price": 1.14773,
+        "original_sl": 1.1484299999999998,
+        "sl": 1.1484299999999998,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 1.0,
+        "realized_pnl": -73.77002874724944,
+        "partials_taken": [],
+        "exit_time": "2026-09-21T07:35:00-04:00",
+        "exit_price": 1.1484299999999998,
+        "pnl": -73.77002874724944
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-09-28T02:35:00-04:00",
+        "entry_price": 1.14662,
+        "original_sl": 1.14732,
+        "sl": 1.14648,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 408.98103937475076,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-09-28T02:36:00-04:00",
+        "exit_price": 1.1410200000000006,
+        "pnl": 408.98103937475076
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-09-28T07:29:00-04:00",
+        "entry_price": 1.1383,
+        "original_sl": 1.13923,
+        "sl": 1.138114,
+        "risk": 0.0009299999999998754,
+        "risk_pips": 9.299999999998754,
+        "remaining_weight": 0.7,
+        "realized_pnl": 80.20702440766799,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ]
+        ],
+        "tier_3.0": true,
+        "exit_time": "2026-09-28T15:26:00-04:00",
+        "exit_price": 1.138114,
+        "pnl": 80.20702440766799
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "short",
+        "entry_time": "2026-09-30T07:02:00-04:00",
+        "entry_price": 1.13484,
+        "original_sl": 1.13554,
+        "sl": 1.13554,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 1.0,
+        "realized_pnl": -77.92420909760112,
+        "partials_taken": [],
+        "exit_time": "2026-09-30T07:56:00-04:00",
+        "exit_price": 1.13554,
+        "pnl": -77.92420909760112
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-10-20T07:46:00-04:00",
+        "entry_price": 1.12314,
+        "original_sl": 1.12244,
+        "sl": 1.12244,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 1.0,
+        "realized_pnl": -77.14496700662511,
+        "partials_taken": [],
+        "exit_time": "2026-10-20T07:53:00-04:00",
+        "exit_price": 1.12244,
+        "pnl": -77.14496700662511
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-10-21T09:01:00-04:00",
+        "entry_price": 1.12193,
+        "original_sl": 1.1212300000000002,
+        "sl": 1.1220700000000001,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 0.39999999999999997,
+        "realized_pnl": 189.4063229946679,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "exit_time": "2026-10-22T08:50:00-04:00",
+        "exit_price": 1.1220700000000001,
+        "pnl": 189.4063229946679
+      },
+      {
+        "symbol": "EURUSD",
+        "type": "long",
+        "entry_time": "2026-10-23T09:06:00-04:00",
+        "entry_price": 1.11921,
+        "original_sl": 1.1185100000000001,
+        "sl": 1.11935,
+        "risk": 0.0006999999999999229,
+        "risk_pips": 6.999999999999229,
+        "remaining_weight": 0.7,
+        "realized_pnl": 81.39828378916926,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ]
+        ],
+        "tier_3.0": true,
+        "exit_time": "2026-10-26T09:33:00-04:00",
+        "exit_price": 1.11935,
+        "pnl": 81.39828378916926
+      }
+    ]
+  },
+  "GBPUSD": {
+    "symbol": "GBPUSD",
+    "initial_capital": 5000.0,
+    "final_capital": 5030.445169632695,
+    "net_profit": 30.44516963269507,
+    "net_profit_pct": 0.6089033926539014,
+    "total_trades": 39,
+    "wins": 8,
+    "losses": 31,
+    "win_rate": 20.51282051282051,
+    "profit_factor": 1.0192905322753818,
+    "max_drawdown_dollar": 613.1957890990916,
+    "max_drawdown_pct": 11.448815184383134,
+    "avg_win": 201.08616442721393,
+    "avg_loss": -50.91110147693591,
+    "avg_risk_pips": 8.699999999998356,
+    "monthly": {
+      "2026-01": {
+        "trades": 5,
+        "wins": 1,
+        "losses": 4,
+        "win_rate": 20.0,
+        "pnl": 71.9469328,
+        "return_pct": 1.438938656
+      },
+      "2026-02": {
+        "trades": 12,
+        "wins": 3,
+        "losses": 9,
+        "win_rate": 25.0,
+        "pnl": 148.5593918234349,
+        "return_pct": 2.9711878364686983
+      },
+      "2026-03": {
+        "trades": 1,
+        "wins": 0,
+        "losses": 1,
+        "win_rate": 0.0,
+        "pnl": -52.20506324623434,
+        "return_pct": -1.0441012649246868
+      },
+      "2026-04": {
+        "trades": 3,
+        "wins": 0,
+        "losses": 3,
+        "win_rate": 0.0,
+        "pnl": -153.5037157641642,
+        "return_pct": -3.0700743152832843
+      },
+      "2026-06": {
+        "trades": 1,
+        "wins": 0,
+        "losses": 1,
+        "win_rate": 0.0,
+        "pnl": -50.147975456130354,
+        "return_pct": -1.0029595091226071
+      },
+      "2026-07": {
+        "trades": 5,
+        "wins": 1,
+        "losses": 4,
+        "win_rate": 20.0,
+        "pnl": 71.43826179992556,
+        "return_pct": 1.428765235998511
+      },
+      "2026-08": {
+        "trades": 6,
+        "wins": 1,
+        "losses": 5,
+        "win_rate": 16.666666666666664,
+        "pnl": -197.01001138983833,
+        "return_pct": -3.9402002277967667
+      },
+      "2026-09": {
+        "trades": 2,
+        "wins": 0,
+        "losses": 2,
+        "win_rate": 0.0,
+        "pnl": -96.29764862928312,
+        "return_pct": -1.9259529725856623
+      },
+      "2026-10": {
+        "trades": 3,
+        "wins": 1,
+        "losses": 2,
+        "win_rate": 33.33333333333333,
+        "pnl": 20.898965972042085,
+        "return_pct": 0.41797931944084166
+      },
+      "2026-11": {
+        "trades": 1,
+        "wins": 1,
+        "losses": 0,
+        "win_rate": 100.0,
+        "pnl": 266.76603172294597,
+        "return_pct": 5.3353206344589195
+      }
+    },
+    "trades_log": [
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-01-13T09:35:00-05:00",
+        "entry_price": 1.34669,
+        "original_sl": 1.3458700000000001,
+        "sl": 1.3458700000000001,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -50.0,
+        "partials_taken": [],
+        "exit_time": "2026-01-13T09:48:00-05:00",
+        "exit_price": 1.3458700000000001,
+        "pnl": -50.0
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-01-15T04:01:00-05:00",
+        "entry_price": 1.3434400000000002,
+        "original_sl": 1.34426,
+        "sl": 1.34426,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -49.5,
+        "partials_taken": [],
+        "exit_time": "2026-01-15T05:41:00-05:00",
+        "exit_price": 1.34426,
+        "pnl": -49.5
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-01-16T07:16:00-05:00",
+        "entry_price": 1.34149,
+        "original_sl": 1.34231,
+        "sl": 1.341326,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 274.428,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-01-18T19:09:00-05:00",
+        "exit_price": 1.3349300000000015,
+        "pnl": 274.428
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-01-21T04:18:00-05:00",
+        "entry_price": 1.34361,
+        "original_sl": 1.34264,
+        "sl": 1.34264,
+        "risk": 0.0009699999999999154,
+        "risk_pips": 9.699999999999154,
+        "remaining_weight": 1.0,
+        "realized_pnl": -51.74928,
+        "partials_taken": [],
+        "exit_time": "2026-01-21T06:30:00-05:00",
+        "exit_price": 1.34264,
+        "pnl": -51.74928
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-01-23T04:40:00-05:00",
+        "entry_price": 1.3493300000000001,
+        "original_sl": 1.35015,
+        "sl": 1.35015,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -51.2317872,
+        "partials_taken": [],
+        "exit_time": "2026-01-23T04:43:00-05:00",
+        "exit_price": 1.35015,
+        "pnl": -51.2317872
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-02-02T07:36:00-05:00",
+        "entry_price": 1.3706200000000002,
+        "original_sl": 1.37165,
+        "sl": 1.3704140000000002,
+        "risk": 0.0010299999999998644,
+        "risk_pips": 10.299999999998644,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 284.02902823679995,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-02-02T13:02:00-05:00",
+        "exit_price": 1.3623800000000013,
+        "pnl": 284.02902823679995
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-02-03T03:07:00-05:00",
+        "entry_price": 1.36914,
+        "original_sl": 1.3699599999999998,
+        "sl": 1.3699599999999998,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -53.55975961036799,
+        "partials_taken": [],
+        "exit_time": "2026-02-03T03:28:00-05:00",
+        "exit_price": 1.3699599999999998,
+        "pnl": -53.55975961036799
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-02-03T03:35:00-05:00",
+        "entry_price": 1.3693400000000002,
+        "original_sl": 1.37024,
+        "sl": 1.37024,
+        "risk": 0.0008999999999996788,
+        "risk_pips": 8.999999999996788,
+        "remaining_weight": 1.0,
+        "realized_pnl": -53.02416201426431,
+        "partials_taken": [],
+        "exit_time": "2026-02-03T04:35:00-05:00",
+        "exit_price": 1.37024,
+        "pnl": -53.02416201426431
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-02-04T07:51:00-05:00",
+        "entry_price": 1.37097,
+        "original_sl": 1.3717899999999998,
+        "sl": 1.3717899999999998,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -52.49392039412167,
+        "partials_taken": [],
+        "exit_time": "2026-02-04T09:29:00-05:00",
+        "exit_price": 1.3717899999999998,
+        "pnl": -52.49392039412167
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-02-09T03:21:00-05:00",
+        "entry_price": 1.36142,
+        "original_sl": 1.36301,
+        "sl": 1.36301,
+        "risk": 0.0015899999999999803,
+        "risk_pips": 15.899999999999803,
+        "remaining_weight": 1.0,
+        "realized_pnl": -51.96898119018046,
+        "partials_taken": [],
+        "exit_time": "2026-02-09T08:42:00-05:00",
+        "exit_price": 1.36301,
+        "pnl": -51.96898119018046
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-02-13T09:22:00-05:00",
+        "entry_price": 1.36097,
+        "original_sl": 1.35962,
+        "sl": 1.36124,
+        "risk": 0.0013499999999999623,
+        "risk_pips": 13.499999999999623,
+        "remaining_weight": 0.7,
+        "realized_pnl": 53.5072630334098,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ]
+        ],
+        "tier_3.0": true,
+        "exit_time": "2026-02-16T23:02:00-05:00",
+        "exit_price": 1.36124,
+        "pnl": 53.5072630334098
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-02-19T04:06:00-05:00",
+        "entry_price": 1.34986,
+        "original_sl": 1.3506799999999999,
+        "sl": 1.3506799999999999,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -51.98436400861275,
+        "partials_taken": [],
+        "exit_time": "2026-02-19T04:48:00-05:00",
+        "exit_price": 1.3506799999999999,
+        "pnl": -51.98436400861275
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-02-19T07:01:00-05:00",
+        "entry_price": 1.35066,
+        "original_sl": 1.3498400000000002,
+        "sl": 1.3498400000000002,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -51.46452036852662,
+        "partials_taken": [],
+        "exit_time": "2026-02-19T07:03:00-05:00",
+        "exit_price": 1.3498400000000002,
+        "pnl": -51.46452036852662
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-02-24T04:06:00-05:00",
+        "entry_price": 1.3477599999999998,
+        "original_sl": 1.34694,
+        "sl": 1.34694,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -50.94987516484135,
+        "partials_taken": [],
+        "exit_time": "2026-02-24T05:07:00-05:00",
+        "exit_price": 1.34694,
+        "pnl": -50.94987516484135
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-02-24T09:57:00-05:00",
+        "entry_price": 1.34835,
+        "original_sl": 1.3475300000000001,
+        "sl": 1.348514,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 282.4661079138805,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-02-25T13:47:00-05:00",
+        "exit_price": 1.3549099999999985,
+        "pnl": 282.4661079138805
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-02-27T04:25:00-05:00",
+        "entry_price": 1.34695,
+        "original_sl": 1.34777,
+        "sl": 1.34777,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -53.26503749233174,
+        "partials_taken": [],
+        "exit_time": "2026-02-27T04:27:00-05:00",
+        "exit_price": 1.34777,
+        "pnl": -53.26503749233174
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-02-27T07:12:00-05:00",
+        "entry_price": 1.3475899999999998,
+        "original_sl": 1.34677,
+        "sl": 1.34677,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -52.73238711740843,
+        "partials_taken": [],
+        "exit_time": "2026-02-27T08:03:00-05:00",
+        "exit_price": 1.34677,
+        "pnl": -52.73238711740843
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-03-18T08:08:00-04:00",
+        "entry_price": 1.33602,
+        "original_sl": 1.3368399999999998,
+        "sl": 1.3368399999999998,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -52.20506324623434,
+        "partials_taken": [],
+        "exit_time": "2026-03-18T09:18:00-04:00",
+        "exit_price": 1.3368399999999998,
+        "pnl": -52.20506324623434
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-04-10T04:37:00-04:00",
+        "entry_price": 1.34194,
+        "original_sl": 1.34112,
+        "sl": 1.34112,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -51.683012613772,
+        "partials_taken": [],
+        "exit_time": "2026-04-10T06:58:00-04:00",
+        "exit_price": 1.34112,
+        "pnl": -51.683012613772
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-04-15T02:48:00-04:00",
+        "entry_price": 1.35588,
+        "original_sl": 1.3550600000000002,
+        "sl": 1.3550600000000002,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -51.16618248763428,
+        "partials_taken": [],
+        "exit_time": "2026-04-15T08:11:00-04:00",
+        "exit_price": 1.3550600000000002,
+        "pnl": -51.16618248763428
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-04-21T04:03:00-04:00",
+        "entry_price": 1.35177,
+        "original_sl": 1.35095,
+        "sl": 1.35095,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -50.65452066275793,
+        "partials_taken": [],
+        "exit_time": "2026-04-21T06:56:00-04:00",
+        "exit_price": 1.35095,
+        "pnl": -50.65452066275793
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-06-01T09:41:00-04:00",
+        "entry_price": 1.34584,
+        "original_sl": 1.34502,
+        "sl": 1.34502,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -50.147975456130354,
+        "partials_taken": [],
+        "exit_time": "2026-06-01T12:11:00-04:00",
+        "exit_price": 1.34502,
+        "pnl": -50.147975456130354
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-07-20T08:45:00-04:00",
+        "entry_price": 1.3219699999999999,
+        "original_sl": 1.32115,
+        "sl": 1.322134,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 278.0203759287867,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-07-20T08:46:00-04:00",
+        "exit_price": 1.3285299999999984,
+        "pnl": 278.0203759287867
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-07-20T08:52:00-04:00",
+        "entry_price": 1.3464999999999998,
+        "original_sl": 1.34568,
+        "sl": 1.34568,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -52.426699460856916,
+        "partials_taken": [],
+        "exit_time": "2026-07-20T11:02:00-04:00",
+        "exit_price": 1.34568,
+        "pnl": -52.426699460856916
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-07-29T02:54:00-04:00",
+        "entry_price": 1.3299,
+        "original_sl": 1.33072,
+        "sl": 1.33072,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -51.90243246624835,
+        "partials_taken": [],
+        "exit_time": "2026-07-29T07:47:00-04:00",
+        "exit_price": 1.33072,
+        "pnl": -51.90243246624835
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-07-29T08:38:00-04:00",
+        "entry_price": 1.32999,
+        "original_sl": 1.3308099999999998,
+        "sl": 1.3308099999999998,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -51.38340814158586,
+        "partials_taken": [],
+        "exit_time": "2026-07-29T17:00:00-04:00",
+        "exit_price": 1.3308099999999998,
+        "pnl": -51.38340814158586
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-07-31T07:56:00-04:00",
+        "entry_price": 1.34459,
+        "original_sl": 1.3437700000000001,
+        "sl": 1.3437700000000001,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -50.86957406017,
+        "partials_taken": [],
+        "exit_time": "2026-07-31T10:01:00-04:00",
+        "exit_price": 1.3437700000000001,
+        "pnl": -50.86957406017
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-08-10T08:33:00-04:00",
+        "entry_price": 1.35025,
+        "original_sl": 1.3494300000000001,
+        "sl": 1.3494300000000001,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -50.3608783195683,
+        "partials_taken": [],
+        "exit_time": "2026-08-10T09:00:00-04:00",
+        "exit_price": 1.3494300000000001,
+        "pnl": -50.3608783195683
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-08-10T09:35:00-04:00",
+        "entry_price": 1.3497599999999998,
+        "original_sl": 1.34894,
+        "sl": 1.349924,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 0.7,
+        "realized_pnl": 51.8515603178313,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ]
+        ],
+        "tier_3.0": true,
+        "exit_time": "2026-08-10T20:15:00-04:00",
+        "exit_price": 1.349924,
+        "pnl": 51.8515603178313
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-08-25T09:40:00-04:00",
+        "entry_price": 1.3637899999999998,
+        "original_sl": 1.36297,
+        "sl": 1.36297,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -50.37578513955093,
+        "partials_taken": [],
+        "exit_time": "2026-08-25T10:07:00-04:00",
+        "exit_price": 1.36297,
+        "pnl": -50.37578513955093
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-08-26T03:26:00-04:00",
+        "entry_price": 1.3636899999999998,
+        "original_sl": 1.36287,
+        "sl": 1.36287,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -49.872027288155415,
+        "partials_taken": [],
+        "exit_time": "2026-08-26T05:14:00-04:00",
+        "exit_price": 1.36287,
+        "pnl": -49.872027288155415
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-08-27T04:25:00-04:00",
+        "entry_price": 1.3589499999999999,
+        "original_sl": 1.35813,
+        "sl": 1.35813,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -49.37330701527386,
+        "partials_taken": [],
+        "exit_time": "2026-08-27T07:35:00-04:00",
+        "exit_price": 1.35813,
+        "pnl": -49.37330701527386
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-08-28T09:24:00-04:00",
+        "entry_price": 1.3586999999999998,
+        "original_sl": 1.35777,
+        "sl": 1.35777,
+        "risk": 0.0009299999999998754,
+        "risk_pips": 9.299999999998754,
+        "remaining_weight": 1.0,
+        "realized_pnl": -48.87957394512112,
+        "partials_taken": [],
+        "exit_time": "2026-08-28T11:30:00-04:00",
+        "exit_price": 1.35777,
+        "pnl": -48.87957394512112
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-09-22T09:58:00-04:00",
+        "entry_price": 1.33616,
+        "original_sl": 1.33708,
+        "sl": 1.33708,
+        "risk": 0.0009200000000000319,
+        "risk_pips": 9.200000000000319,
+        "remaining_weight": 1.0,
+        "realized_pnl": -48.39077820566991,
+        "partials_taken": [],
+        "exit_time": "2026-09-22T11:32:00-04:00",
+        "exit_price": 1.33708,
+        "pnl": -48.39077820566991
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-09-24T02:29:00-04:00",
+        "entry_price": 1.3241500000000002,
+        "original_sl": 1.32497,
+        "sl": 1.32497,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -47.90687042361321,
+        "partials_taken": [],
+        "exit_time": "2026-09-24T05:14:00-04:00",
+        "exit_price": 1.32497,
+        "pnl": -47.90687042361321
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-10-05T08:04:00-04:00",
+        "entry_price": 1.32339,
+        "original_sl": 1.3242099999999999,
+        "sl": 1.323226,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 0.39999999999999997,
+        "realized_pnl": 117.6209482640572,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "exit_time": "2026-10-06T06:44:00-04:00",
+        "exit_price": 1.323226,
+        "pnl": 117.6209482640572
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "short",
+        "entry_time": "2026-10-13T04:31:00-04:00",
+        "entry_price": 1.32187,
+        "original_sl": 1.32269,
+        "sl": 1.32269,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -48.604011202017645,
+        "partials_taken": [],
+        "exit_time": "2026-10-13T04:58:00-04:00",
+        "exit_price": 1.32269,
+        "pnl": -48.604011202017645
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-10-22T08:51:00-04:00",
+        "entry_price": 1.3398599999999998,
+        "original_sl": 1.33904,
+        "sl": 1.33904,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": 1.0,
+        "realized_pnl": -48.117971089997475,
+        "partials_taken": [],
+        "exit_time": "2026-10-22T08:57:00-04:00",
+        "exit_price": 1.33904,
+        "pnl": -48.117971089997475
+      },
+      {
+        "symbol": "GBPUSD",
+        "type": "long",
+        "entry_time": "2026-11-03T09:16:00-05:00",
+        "entry_price": 1.33845,
+        "original_sl": 1.33763,
+        "sl": 1.338614,
+        "risk": 0.0008199999999998209,
+        "risk_pips": 8.199999999998209,
+        "remaining_weight": -5.551115123125783e-17,
+        "realized_pnl": 266.76603172294597,
+        "partials_taken": [
+          [
+            3.0,
+            0.3
+          ],
+          [
+            5.0,
+            0.3
+          ],
+          [
+            8.0,
+            0.4
+          ]
+        ],
+        "tier_3.0": true,
+        "tier_5.0": true,
+        "tier_8.0": true,
+        "exit_time": "2026-11-03T22:14:00-05:00",
+        "exit_price": 1.3450099999999985,
+        "pnl": 266.76603172294597
+      }
+    ]
+  }
+}

@@ -3,8 +3,14 @@ import yfinance as yf
 import sys
 import os
 import numpy as np
-sys.path.append('d:/FOREX/FOREX')
-from lk_system.core.smc_engine import SMCEngine
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+try:
+    from core.smc_engine import SMCEngine
+except ImportError:
+    from lk_system.core.smc_engine import SMCEngine
 
 class BacktestEngine:
     """

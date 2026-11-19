@@ -15,7 +15,8 @@ def download_data():
     date_from = datetime(2026, 8, 1, tzinfo=timezone.utc)
     date_to = datetime(2026, 8, 7, tzinfo=timezone.utc)
     
-    data_dir = r"D:\FOREX\FOREX\candle data"
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_dir = os.path.join(project_root, "candle data")
     os.makedirs(data_dir, exist_ok=True)
     
     for pair in pairs:

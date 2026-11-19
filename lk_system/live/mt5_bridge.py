@@ -324,6 +324,14 @@ class MT5Bridge:
         
         vol = lot_size if lot_size else pos.volume
         
+        symbol_info = mt5.symbol_info(pos.symbol)
+        if symbol_info:
+            step_vol = symbol_info.volume_step
+            min_vol = symbol_info.volume_min
+            max_vol = symbol_info.volume_max
+            vol = round(vol / step_vol) * step_vol
+            vol = max(min_vol, min(vol, max_vol))
+        
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
             "position": pos.ticket,

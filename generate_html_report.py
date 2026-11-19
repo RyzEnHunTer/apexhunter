@@ -86,6 +86,40 @@ def generate_quantstats_report():
     
     html_out = os.path.join(OUT_DIR, "Advanced_Institutional_Tear_Sheet.html")
     
+    import matplotlib.pyplot as plt
+    
+    # Calculate Drawdowns
+    cumulative = (1 + returns_series).cumprod()
+    peak = cumulative.cummax()
+    drawdown = (cumulative - peak) / peak
+    
+    max_dd = drawdown.min() * 100
+    
+    # Daily DD is just the daily return when negative (since it's a day-by-day series)
+    daily_dd = returns_series[returns_series < 0].min() * 100
+    if pd.isna(daily_dd):
+        daily_dd = 0
+        
+    print("\n========================================================")
+    print("      FINAL PORTFOLIO METRICS ($50k Account)")
+    print("========================================================")
+    print(f"Total Trades       : {len(df)}")
+    print(f"Total ROI          : {((equity - initial_capital)/initial_capital)*100:.2f}%")
+    print(f"Max Global Drawdown: {max_dd:.2f}%")
+    print(f"Max Daily Drawdown : {daily_dd:.2f}%")
+    print("========================================================\n")
+    
+    # Save Equity Curve
+    plt.figure(figsize=(10, 5))
+    plt.plot(returns_series.index, cumulative * initial_capital, label="Equity ($)", color='green')
+    plt.title("Portfolio Equity Curve")
+    plt.ylabel("Account Balance ($)")
+    plt.grid(True, alpha=0.3)
+    
+    img_path = os.path.join(OUT_DIR, "final_equity.png")
+    plt.savefig(img_path, bbox_inches='tight')
+    print(f"Equity curve saved to {img_path}")
+    
     # QuantStats generated HTML report
     qs.reports.html(returns_series, title="Lewis Kelly - Advanced Quantitative Performance Report", output=html_out)
     

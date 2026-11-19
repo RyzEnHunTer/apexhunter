@@ -1,0 +1,10 @@
+# Master Institutional Trading System - Production Dependencies
+# Recommended Python Runtime: Python 3.11.x (or 3.12.x) 64-bit
+
+MetaTrader5>=5.0.45
+pandas>=2.2.0
+numpy>=1.26.0
+rich>=13.7.0
+requests>=2.31.0
+pyarrow>=15.0.0
+tzdata>=2024.1

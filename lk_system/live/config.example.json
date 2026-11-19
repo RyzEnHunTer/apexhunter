@@ -1,0 +1,75 @@
+{
+  "notifications": {
+    "active_platform": "none",
+    "discord_webhook_url": "",
+    "telegram_bot_token": "",
+    "telegram_chat_id": ""
+  },
+  "trading_rules": {
+    "base_capital": 5000.0,
+    "daily_cb_pct": 0.04,
+    "max_floor_cb_pct": 0.085,
+    "hard_floor_pct": 0.1,
+    "normal_risk_pct": 0.01,
+    "recovery_risk_pct": 0.002,
+    "max_concurrent_trades": 4,
+    "magic_base": 88000,
+    "broker_utc_offset_hours": 2
+  },
+  "news_guardian": {
+    "auto_close_before_min": 10,
+    "embargo_before_min": 20,
+    "embargo_after_min": 15,
+    "calendar_refresh_hours": 12,
+    "calendar_url": "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+  },
+  "spread_guardian": {
+    "max_spread_sl_ratio": 0.3,
+    "custom_caps": {
+      "EURUSD": 2.5,
+      "GBPUSD": 3.0,
+      "AUDUSD": 3.0,
+      "USDJPY": 3.5,
+      "USDCAD": 3.2,
+      "EURJPY": 3.8,
+      "XAUUSD": 1.0,
+      "NAS100": 6.5
+    }
+  },
+  "order_splits": {
+    "APEXHUNTER_1_2_1": [
+      {
+        "tier": 1,
+        "share": 0.5,
+        "target_r": 1.4,
+        "label": "Apex_TP1_1.4R"
+      },
+      {
+        "tier": 2,
+        "share": 0.5,
+        "target_r": 2.1,
+        "label": "Apex_TP2_2.1R"
+      }
+    ],
+    "LEWIS_KELLY_SMC": [
+      {
+        "tier": 1,
+        "share": 0.3,
+        "target_r": 2.5,
+        "label": "SMC_TP1_2.5R"
+      },
+      {
+        "tier": 2,
+        "share": 0.3,
+        "target_r": 5.0,
+        "label": "SMC_TP2_5.0R"
+      },
+      {
+        "tier": 3,
+        "share": 0.4,
+        "target_r": 8.0,
+        "label": "SMC_TP3_8.0R"
+      }
+    ]
+  }
+}

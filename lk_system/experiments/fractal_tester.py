@@ -44,7 +44,12 @@ def compute_fractal_structure(df, left_len=2, right_len=2):
 
 if __name__ == "__main__":
     # Test on a sample chunk of EURUSD
-    df = pd.read_csv(r"D:\FOREX\FOREX\candle data\EURUSD_jan to feb ticks.csv", nrows=50000)
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sample_file = os.path.join(repo_root, "candle data", "EURUSD_jan to feb ticks.csv")
+    if not os.path.exists(sample_file):
+        print(f"Sample file not found at {sample_file}")
+        sys.exit(0)
+    df = pd.read_csv(sample_file, nrows=50000)
     df.columns = ['Time', 'Ask', 'Bid', 'Volume']
     df['Mid'] = (df['Ask'] + df['Bid']) / 2
     df['Time'] = pd.to_datetime(df['Time'], format="%d.%m.%Y %H:%M:%S.%f")

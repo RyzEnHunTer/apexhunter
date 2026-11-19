@@ -1,0 +1,57 @@
+# =====================================================================
+# Git Ignore Configuration - lk_system
+# =====================================================================
+
+# Python Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# Private Configurations & State
+live/bot_accounts_config.json
+live/config.json
+*.env
+.env*
+bot_state*.json
+bot_state*.json.tmp
+
+# Logs & Audit CSVs
+logs/
+*.log
+**/*.log
+
+# Market Data, Tick Data & Caches (NEVER UPLOAD)
+tick data/
+tick_cache/
+data/
+data_jan_nov_2026/
+*.parquet
+**/*.parquet
+*.csv
+**/*.csv
+*.pkl
+**/*.pkl
+
+# Archives
+*.rar
+*.zip
+*.tar.gz
+*.7z
+
+# Scratch
+scratch/
+.gemini/
+
+# Text files except requirements
+*.txt
+!requirements.txt
+
+# Virtual Environments
+venv/
+env/
+.venv/
+
+# OS Files
+.DS_Store
+Thumbs.db

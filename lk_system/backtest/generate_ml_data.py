@@ -4,7 +4,10 @@ import pandas as pd
 
 def generate_ml_training_data():
     pairs = ['EURJPY', 'AUDNZD', 'EURUSD', 'USDJPY', 'GBPAUD', 'AUDCAD', 'CHFJPY']
-    data_dir = r"D:\FOREX\FOREX\candle data"
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_dir = os.path.join(os.path.dirname(project_root), "candle data")
+    if not os.path.exists(data_dir):
+        data_dir = os.path.join(project_root, "candle data")
     
     print("--- GENERATING ML TRAINING DATA (April - July) ---")
     

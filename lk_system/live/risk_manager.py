@@ -26,21 +26,21 @@ class PortfolioRiskManager:
         if account_info:
             current_equity = account_info.equity
             
-            # Fetch all history to find the highest balance water mark
-            all_deals = mt5.history_deals_get(datetime.datetime(2000, 1, 1, tzinfo=self.timezone), datetime.datetime.now(self.timezone))
-            if all_deals:
-                # Approximate peak balance (starting balance + cumulative profit of all deals)
-                # Since MT5 doesn't easily expose daily historical balances without heavy tracking, 
-                # we'll approximate the peak balance. A safer approach for prop firms is just checking 
-                # if current equity is 9% below the initial deposit.
-                # Assuming the first deal in history is the deposit:
-                initial_deposit = all_deals[0].profit if all_deals[0].type == mt5.DEAL_TYPE_BALANCE else account_info.balance
-                
-                # Check absolute drawdown from initial deposit using dynamic circuit breaker limit
-                max_loss_allowed = initial_deposit * (self.circuit_breaker_percent / 100.0)
-                if current_equity <= (initial_deposit - max_loss_allowed):
-                    print(f"[CIRCUIT BREAKER] Global {self.circuit_breaker_percent}% Max Drawdown breached! Equity: {current_equity}, Deposit: {initial_deposit}")
-                    return False
+            if not hasattr(self, '_cached_initial_deposit'):
+                # Fetch all history once to find the initial deposit
+                all_deals = mt5.history_deals_get(datetime.datetime(2000, 1, 1, tzinfo=self.timezone), datetime.datetime.now(self.timezone))
+                if all_deals:
+                    self._cached_initial_deposit = all_deals[0].profit if all_deals[0].type == mt5.DEAL_TYPE_BALANCE else account_info.balance
+                else:
+                    self._cached_initial_deposit = account_info.balance
+                    
+            initial_deposit = self._cached_initial_deposit
+            
+            # Check absolute drawdown from initial deposit using dynamic circuit breaker limit
+            max_loss_allowed = initial_deposit * (self.circuit_breaker_percent / 100.0)
+            if current_equity <= (initial_deposit - max_loss_allowed):
+                print(f"[CIRCUIT BREAKER] Global {self.circuit_breaker_percent}% Max Drawdown breached! Equity: {current_equity}, Deposit: {initial_deposit}")
+                return False
 
         # 2. Daily Loss Limit Check (Max 2 losses per day)
         start_of_day = self._get_start_of_day()

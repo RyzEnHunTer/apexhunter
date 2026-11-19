@@ -19,9 +19,9 @@ def run_comparison():
         'RAW CHOPPY (M5 FVG, Asian Range Filter)': 'CHOP'
     }
     
-    data_dir = "D:/FOREX/FOREX/candle data"
+    data_dir = os.path.join(PROJECT_ROOT, "candle data")
     
-    report_path = r"C:\Users\rafta\.gemini\antigravity-ide\brain\d61cef1c-09e3-423d-a794-751ac594c159\detailed_comparison_report.md"
+    report_path = os.path.join(PROJECT_ROOT, "detailed_comparison_report.md")
     
     with open(report_path, 'w') as f:
         f.write("# Detailed Head-to-Head Strategy Comparison\n\n")

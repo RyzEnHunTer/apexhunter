@@ -5,7 +5,10 @@ from tick_engine import TickBacktestEngine
 
 def generate_report():
     pairs = ['EURUSD', 'USDJPY', 'CHFJPY', 'EURJPY']
-    data_dir = "D:/FOREX/FOREX/candle data"
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_dir = os.path.join(os.path.dirname(project_root), "candle data")
+    if not os.path.exists(data_dir):
+        data_dir = os.path.join(project_root, "candle data")
     
     all_trades = []
     
@@ -87,7 +90,7 @@ def generate_report():
     md_lines.append(f"- **Final Capital:** ${running_capital:.2f}")
     md_lines.append(f"- **Total Return:** {(running_capital - 5000.0) / 5000.0 * 100:.2f}%")
     
-    out_path = r"C:\Users\rafta\.gemini\antigravity-ide\brain\d61cef1c-09e3-423d-a794-751ac594c159\portfolio_trades.md"
+    out_path = os.path.join(project_root, "backtest", "portfolio_trades.md")
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write("\n".join(md_lines))
         

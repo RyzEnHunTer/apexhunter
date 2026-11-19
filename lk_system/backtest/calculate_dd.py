@@ -1,9 +1,14 @@
+import os
 import re
 from datetime import datetime
 import pandas as pd
 
-def calculate_drawdowns():
-    md_file = r"C:\Users\rafta\.gemini\antigravity-ide\brain\d61cef1c-09e3-423d-a794-751ac594c159\portfolio_trades.md"
+def calculate_drawdowns(md_file=None):
+    if md_file is None:
+        md_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "portfolio_trades.md")
+    if not os.path.exists(md_file):
+        print(f"File not found: {md_file}")
+        return
     
     with open(md_file, 'r', encoding='utf-8') as f:
         lines = f.readlines()
