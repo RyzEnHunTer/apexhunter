@@ -118,7 +118,8 @@ class DCCEngineV12:
         tr2 = (high - prev_close).abs()
         tr3 = (low - prev_close).abs()
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        return tr.rolling(period, min_periods=period).mean()
+        # RMA (Wilder's exponential smoothing matching DC canonical engine)
+        return tr.ewm(alpha=1.0 / period, adjust=False).mean()
 
     @staticmethod
     def calc_adx(df: pd.DataFrame, period: int = 14) -> Tuple[pd.Series, pd.Series, pd.Series]:
@@ -129,26 +130,25 @@ class DCCEngineV12:
         prev_low = low.shift(1)
         prev_close = close.shift(1)
 
+        plus_dm = high - prev_high
+        minus_dm = prev_low - low
+
+        plus_dm = np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0.0)
+        minus_dm = np.where((minus_dm > plus_dm) & (minus_dm > 0), minus_dm, 0.0)
+
         tr1 = high - low
         tr2 = (high - prev_close).abs()
         tr3 = (low - prev_close).abs()
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr_adx = tr.rolling(period, min_periods=period).mean()
 
-        up_move = high - prev_high
-        down_move = prev_low - low
-
-        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
-        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
-
-        plus_dm_s = pd.Series(plus_dm, index=df.index).rolling(period, min_periods=period).mean()
-        minus_dm_s = pd.Series(minus_dm, index=df.index).rolling(period, min_periods=period).mean()
-
-        plus_di = 100.0 * (plus_dm_s / (atr_adx + 1e-9))
-        minus_di = 100.0 * (minus_dm_s / (atr_adx + 1e-9))
+        # Wilder's exponential smoothing (RMA) matching DC canonical engine
+        alpha = 1.0 / period
+        atr = tr.ewm(alpha=alpha, adjust=False).mean()
+        plus_di = 100.0 * (pd.Series(plus_dm, index=df.index).ewm(alpha=alpha, adjust=False).mean() / (atr + 1e-9))
+        minus_di = 100.0 * (pd.Series(minus_dm, index=df.index).ewm(alpha=alpha, adjust=False).mean() / (atr + 1e-9))
 
         dx = 100.0 * ((plus_di - minus_di).abs() / (plus_di + minus_di + 1e-9))
-        adx = dx.rolling(period, min_periods=period).mean()
+        adx = dx.ewm(alpha=alpha, adjust=False).mean()
         return adx, plus_di, minus_di
 
     @staticmethod
