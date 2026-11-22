@@ -311,5 +311,54 @@ class TestLiveVsBacktestParity(unittest.TestCase):
         self.assertEqual(round(split1 + split2 + split3, 2), forex_lots,
                          "Lewis Kelly 3-way split did not sum to total lot!")
 
+    def test_05_liquidity_sweep_canonical_parity(self):
+        """
+        Verifies institutional 5M liquidity sweep detection with rejection confirmation:
+        - True sweep requires penetration AND current close rejecting back inside.
+        - Active breakouts without rejection must be strictly rejected (False).
+        """
+        # Create 30 5M bars with a clear fractal swing high and swing low
+        times = pd.date_range("2026-11-20 06:00", periods=30, freq="5min", tz="UTC")
+        highs = np.full(30, 2600.0)
+        lows = np.full(30, 2580.0)
+        closes = np.full(30, 2590.0)
+
+        # Set a clear fractal swing high at bar 10: 2610.0
+        highs[10] = 2610.0
+        # Set a clear fractal swing low at bar 12: 2570.0
+        lows[12] = 2570.0
+
+        df = pd.DataFrame({'open': closes, 'high': highs, 'low': lows, 'close': closes}, index=times)
+
+        # Case A: Bearish Sweep at bar 28
+        # Pullback penetrates swing high (high=2615.0), but current close rejects back below (close=2605.0 < 2610.0)
+        df.loc[times[27], 'high'] = 2615.0
+        df.loc[times[28], 'close'] = 2605.0
+        is_sweep, sw_lvl, pts = DCCEngineV12.detect_liquidity_sweep(df, 28, direction=-1, swing_lookback=24, pullback_window=3)
+        self.assertTrue(is_sweep, "Valid bearish sweep with rejection was not detected!")
+        self.assertEqual(sw_lvl, 2610.0)
+        self.assertEqual(pts, 5.0)
+
+        # Case B: False Bearish Sweep / Bullish Breakout at bar 28
+        # Pullback penetrates swing high (high=2615.0), but current close also breaks out higher (close=2612.0 > 2610.0)
+        df.loc[times[28], 'close'] = 2612.0
+        is_sweep, _, _ = DCCEngineV12.detect_liquidity_sweep(df, 28, direction=-1, swing_lookback=24, pullback_window=3)
+        self.assertFalse(is_sweep, "Bullish breakout was falsely classified as a bearish sweep!")
+
+        # Case C: Bullish Sweep at bar 28
+        # Pullback penetrates swing low (low=2565.0), but current close rejects back above (close=2575.0 > 2570.0)
+        df.loc[times[27], 'low'] = 2565.0
+        df.loc[times[28], 'close'] = 2575.0
+        is_sweep, sw_lvl, pts = DCCEngineV12.detect_liquidity_sweep(df, 28, direction=1, swing_lookback=24, pullback_window=3)
+        self.assertTrue(is_sweep, "Valid bullish sweep with rejection was not detected!")
+        self.assertEqual(sw_lvl, 2570.0)
+        self.assertEqual(pts, 5.0)
+
+        # Case D: False Bullish Sweep / Bearish Breakdown at bar 28
+        # Pullback penetrates swing low (low=2565.0), but current close also breaks down lower (close=2568.0 < 2570.0)
+        df.loc[times[28], 'close'] = 2568.0
+        is_sweep, _, _ = DCCEngineV12.detect_liquidity_sweep(df, 28, direction=1, swing_lookback=24, pullback_window=3)
+        self.assertFalse(is_sweep, "Bearish breakdown was falsely classified as a bullish sweep!")
+
 if __name__ == "__main__":
     unittest.main()

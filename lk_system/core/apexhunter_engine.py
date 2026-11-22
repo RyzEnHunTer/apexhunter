@@ -168,31 +168,54 @@ class DCCEngineV12:
         df_5m: pd.DataFrame,
         idx: int,
         direction: int,
-        swing_lookback: int = 20,
-        pullback_window: int = 8
+        swing_lookback: int = 24,
+        pullback_window: int = 3
     ) -> Tuple[bool, float, float]:
-        """Detects whether recent price action swept swing highs/lows before the flip."""
-        if idx < swing_lookback + pullback_window:
+        """
+        Detects 5M liquidity sweep (Turtle Soup / false breakout rejection) prior to entry bar.
+        Matches institutional DC flagship specification:
+        - Scans candidate fractal swing pivots across [idx - swing_lookback : idx - pullback_window]
+        - Pullback window [idx - pullback_window : idx + 1] must penetrate swing level
+        - Current bar close MUST reject back inside the range (curr_close > sw_low or curr_close < sw_high)
+        """
+        if idx < swing_lookback + 2:
             return False, 0.0, 0.0
 
-        if direction == 1:  # Bullish setup: sweep of prior swing low
-            swing_zone = df_5m.iloc[idx - swing_lookback - pullback_window : idx - pullback_window]
-            swing_low = float(swing_zone['low'].min())
-            pullback_zone = df_5m.iloc[idx - pullback_window : idx + 1]
-            pullback_low = float(pullback_zone['low'].min())
-            if pullback_low < swing_low:
-                pts_swept = swing_low - pullback_low
-                return True, swing_low, pts_swept
-        elif direction == -1:  # Bearish setup: sweep of prior swing high
-            swing_zone = df_5m.iloc[idx - swing_lookback - pullback_window : idx - pullback_window]
-            swing_high = float(swing_zone['high'].max())
-            pullback_zone = df_5m.iloc[idx - pullback_window : idx + 1]
-            pullback_high = float(pullback_zone['high'].max())
-            if pullback_high > swing_high:
-                pts_swept = pullback_high - swing_high
-                return True, swing_high, pts_swept
+        swing_search_start = max(0, idx - swing_lookback)
+        pullback_start_idx = max(swing_search_start + 1, idx - pullback_window)
+        if pullback_start_idx <= swing_search_start:
+            return False, 0.0, 0.0
 
-        return False, 0.0, 0.0
+        lows = df_5m['low'].values
+        highs = df_5m['high'].values
+        closes = df_5m['close'].values
+
+        if direction == 1:  # BUY Setup (Bullish sweep of prior swing low)
+            cand_lows = [
+                lows[j] for j in range(swing_search_start + 1, pullback_start_idx)
+                if lows[j] <= lows[j - 1] and lows[j] <= lows[j + 1]
+            ]
+            if not cand_lows:
+                cand_lows = [min(lows[swing_search_start:pullback_start_idx])]
+            curr_close = closes[idx]
+            for sw_low in cand_lows:
+                min_pb = min(lows[pullback_start_idx:idx + 1])
+                if min_pb < sw_low and curr_close > sw_low:
+                    return True, float(sw_low), float(sw_low - min_pb)
+            return False, 0.0, 0.0
+        else:  # SELL Setup (Bearish sweep of prior swing high)
+            cand_highs = [
+                highs[j] for j in range(swing_search_start + 1, pullback_start_idx)
+                if highs[j] >= highs[j - 1] and highs[j] >= highs[j + 1]
+            ]
+            if not cand_highs:
+                cand_highs = [max(highs[swing_search_start:pullback_start_idx])]
+            curr_close = closes[idx]
+            for sw_high in cand_highs:
+                max_pb = max(highs[pullback_start_idx:idx + 1])
+                if max_pb > sw_high and curr_close < sw_high:
+                    return True, float(sw_high), float(max_pb - sw_high)
+            return False, 0.0, 0.0
 
     def prepare_data(
         self,

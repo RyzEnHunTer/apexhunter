@@ -1056,11 +1056,11 @@ class MasterUnifiedBot:
             self.audit_logger.log_candle(audit_record)
             return
 
-        # Liquidity sweep confirmation
+        # Liquidity sweep confirmation (Institutional Turtle Soup / Liquidity grab)
         sweep_dir = 1 if sig.signal_type == SignalType.BUY else -1
         has_sweep, sweep_lvl, pts = engine.detect_liquidity_sweep(
             df_m5_closed, len(df_m5_closed) - 1, sweep_dir,
-            swing_lookback=20, pullback_window=8
+            swing_lookback=24, pullback_window=3
         )
         audit_record["sweep_detected"] = bool(has_sweep)
         audit_record["sweep_level"] = float(sweep_lvl)
@@ -1068,7 +1068,7 @@ class MasterUnifiedBot:
 
         if not has_sweep:
             audit_record["decision"] = "REJECT_NO_SWEEP"
-            audit_record["reason"] = f"No confirmed 5M liquidity sweep (Dir={sweep_dir}, Lookback=20)"
+            audit_record["reason"] = f"No confirmed 5M liquidity sweep (Dir={sweep_dir}, Lookback=24)"
             self.audit_logger.log_candle(audit_record)
             return
 
