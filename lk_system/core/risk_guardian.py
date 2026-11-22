@@ -24,7 +24,8 @@ class RiskGuardian:
         hard_floor_pct: float = 0.100,    # 10.0% ($500 drop / $4,500 liquidation)
         normal_risk_pct: float = 0.010,   # 1.00% ($50 on $5,000)
         recovery_risk_pct: float = 0.002, # 0.20% ($10 on $5,000)
-        payout_retention_pct: float = 0.20 # 20% retained cushion on bi-weekly payouts
+        payout_retention_pct: float = 0.20, # 20% retained cushion on bi-weekly payouts
+        max_consecutive_daily_losses: int = 2 # Max consecutive stop-outs per symbol per day
     ):
         self.baseline_capital = baseline_capital
         self.daily_cb_pct = daily_cb_pct
@@ -33,16 +34,19 @@ class RiskGuardian:
         self.normal_risk_pct = normal_risk_pct
         self.recovery_risk_pct = recovery_risk_pct
         self.payout_retention_pct = payout_retention_pct
+        self.max_consecutive_daily_losses = max_consecutive_daily_losses
         
         # State tracking
         self.current_utc_date: Optional[datetime.date] = None
         self.day_start_balance: float = baseline_capital
         self.daily_halt_active: bool = False
         self.hard_floor_breached: bool = False
+        self.symbol_consecutive_losses: Dict[str, int] = {}
+        self.symbol_daily_halted: Dict[str, bool] = {}
 
     def reset_daily_if_new_day(self, current_time_utc: datetime, current_balance: float) -> bool:
         """
-        Updates the 00:00 UTC day-start anchor and clears the daily halt flag.
+        Updates the 00:00 UTC day-start anchor and clears daily halt flags.
         Returns True if a new day rollover just occurred.
         """
         now_date = current_time_utc.date()
@@ -50,8 +54,39 @@ class RiskGuardian:
             self.current_utc_date = now_date
             self.day_start_balance = current_balance
             self.daily_halt_active = False
+            self.symbol_consecutive_losses.clear()
+            self.symbol_daily_halted.clear()
             return True
         return False
+
+    def record_trade_result(self, symbol: str, is_loss: bool):
+        """
+        Tracks consecutive daily losses per symbol.
+        Halts the symbol for the remainder of the day if threshold reached.
+        """
+        if is_loss:
+            current_loss_count = self.symbol_consecutive_losses.get(symbol, 0) + 1
+            self.symbol_consecutive_losses[symbol] = current_loss_count
+            if current_loss_count >= self.max_consecutive_daily_losses:
+                self.symbol_daily_halted[symbol] = True
+        else:
+            self.symbol_consecutive_losses[symbol] = 0
+
+    def is_symbol_trading_allowed(self, symbol: str, current_balance: float, current_equity: float) -> Tuple[bool, str]:
+        """
+        Evaluates both account-wide Circuit Breakers and per-symbol consecutive loss limits.
+        """
+        # 1. Account-wide CB check
+        allowed, reason = self.is_trading_allowed(current_balance, current_equity)
+        if not allowed:
+            return False, reason
+
+        # 2. Per-symbol consecutive loss halt check
+        if self.symbol_daily_halted.get(symbol, False):
+            losses = self.symbol_consecutive_losses.get(symbol, 0)
+            return False, f"Symbol {symbol} Halted: {losses} consecutive daily losses reached"
+
+        return True, "Allowed"
 
     def is_trading_allowed(self, current_balance: float, current_equity: float) -> Tuple[bool, str]:
         """

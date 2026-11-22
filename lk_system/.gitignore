@@ -18,6 +18,7 @@ bot_state*.json.tmp
 
 # Logs & Audit CSVs
 logs/
+vps logs/
 *.log
 **/*.log
 

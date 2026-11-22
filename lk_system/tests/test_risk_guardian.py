@@ -102,5 +102,39 @@ class TestRiskGuardian(unittest.TestCase):
         )
         self.assertAlmostEqual(lots_jpy, 0.40, delta=0.02)
 
+    def test_consecutive_losses_per_symbol_halt(self):
+        t1 = datetime(2026, 11, 19, 10, 0, tzinfo=timezone.utc)
+        self.guardian.reset_daily_if_new_day(t1, current_balance=5000.0)
+
+        # 1st loss on NAS100
+        self.guardian.record_trade_result(symbol="NAS100", is_loss=True)
+        allowed, reason = self.guardian.is_symbol_trading_allowed("NAS100", 4950.0, 4950.0)
+        self.assertTrue(allowed)
+        self.assertEqual(self.guardian.symbol_consecutive_losses.get("NAS100", 0), 1)
+
+        # 2nd consecutive loss on NAS100 -> Halts NAS100 for the remainder of the day!
+        self.guardian.record_trade_result(symbol="NAS100", is_loss=True)
+        allowed, reason = self.guardian.is_symbol_trading_allowed("NAS100", 4900.0, 4900.0)
+        self.assertFalse(allowed)
+        self.assertIn("Halted", reason)
+        self.assertIn("consecutive", reason.lower())
+
+        # Other symbols like EURUSD or XAUUSD should remain allowed (symbol isolation)
+        allowed_gold, _ = self.guardian.is_symbol_trading_allowed("XAUUSD", 4900.0, 4900.0)
+        self.assertTrue(allowed_gold)
+
+        # A win on EURUSD resets its consecutive counter
+        self.guardian.record_trade_result(symbol="EURUSD", is_loss=True)
+        self.assertEqual(self.guardian.symbol_consecutive_losses.get("EURUSD", 0), 1)
+        self.guardian.record_trade_result(symbol="EURUSD", is_loss=False)
+        self.assertEqual(self.guardian.symbol_consecutive_losses.get("EURUSD", 0), 0)
+
+        # Next day rollover unhalts NAS100
+        t2 = datetime(2026, 11, 20, 0, 5, tzinfo=timezone.utc)
+        self.guardian.reset_daily_if_new_day(t2, current_balance=4900.0)
+        allowed_next_day, _ = self.guardian.is_symbol_trading_allowed("NAS100", 4900.0, 4900.0)
+        self.assertTrue(allowed_next_day)
+        self.assertEqual(self.guardian.symbol_consecutive_losses.get("NAS100", 0), 0)
+
 if __name__ == '__main__':
     unittest.main()

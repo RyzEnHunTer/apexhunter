@@ -22,6 +22,39 @@ class OrderManager:
         self.magic_base = magic_base
         # Map: group_id -> {strategy, symbol, entry_p, initial_sl, be_sl, tickets: [t1, t2, t3], be_updated: bool}
         self.active_groups: Dict[str, Dict[str, Any]] = {}
+        # Ticket modification throttle tracking: ticket -> timestamp of last attempt
+        self.modification_attempts: Dict[int, float] = {}
+
+    def can_attempt_modification(self, ticket: int, current_time: float, cooldown_sec: float = 30.0) -> bool:
+        """Determines if enough cooldown time has elapsed to retry modifying this ticket."""
+        last_time = self.modification_attempts.get(ticket, 0.0)
+        return (current_time - last_time) >= cooldown_sec
+
+    def record_modification_attempt(self, ticket: int, timestamp: float):
+        """Records the timestamp of an SL modification attempt."""
+        self.modification_attempts[ticket] = timestamp
+
+    @staticmethod
+    def check_price_stops_distance(
+        order_type: int,
+        current_price: float,
+        target_sl: float,
+        stops_level_pts: int,
+        point: float
+    ) -> bool:
+        """
+        Validates if target_sl satisfies the broker's minimum stops_level distance from current_price.
+        order_type: 0 for BUY, 1 for SELL.
+        Prevents MT5 retcode 10016 (TRADE_RETCODE_INVALID_STOPS).
+        """
+        min_dist = max(stops_level_pts, 1) * point
+        if order_type == 0:  # BUY
+            # Bid must be strictly greater than target_sl + min_dist
+            return (current_price - target_sl) >= min_dist
+        elif order_type == 1:  # SELL
+            # Ask must be strictly less than target_sl - min_dist
+            return (target_sl - current_price) >= min_dist
+        return False
 
     def calculate_order_splits(
         self,

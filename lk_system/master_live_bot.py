@@ -140,8 +140,8 @@ class MasterUnifiedBot:
 
         # 7. ApexHunter 1.2.1 Engines for Gold & Nasdaq (Simultaneous Parallel Execution)
         self.apex_engines = {
-            'XAUUSD': DCCEngineV12(symbol='XAUUSD'),
-            'NAS100': DCCEngineV12(symbol='NAS100')
+            'XAUUSD': DCCEngineV12(symbol='XAUUSD', atr_sl_multiplier=0.90, tp1_rr=1.40, tp2_rr=2.20),
+            'NAS100': DCCEngineV12(symbol='NAS100', atr_sl_multiplier=1.40, tp1_rr=1.40, tp2_rr=2.10)
         }
 
         # 8. Persistent Account Lifecycle & Evaluation Target Manager
@@ -1008,10 +1008,9 @@ class MasterUnifiedBot:
             return
 
         df_m5_closed = df_m5.iloc[:-1]
-        df_h1_closed = df_h1.iloc[:-1]
-
+        # Pass full df_h1 so engine.prepare_data applies exact single 1H bar shift without double lag
         engine = self.apex_engines[canonical]
-        df_prep = engine.prepare_data(df_m5_closed, df_h1_closed)
+        df_prep = engine.prepare_data(df_m5_closed, df_h1)
         if len(df_prep) < 2:
             return
 
@@ -1116,8 +1115,16 @@ class MasterUnifiedBot:
             self.audit_logger.log_candle(audit_record)
             return
 
-        # 4. Fitted Dollar Risk Calculation
+        # 4. Risk Guardian Circuit Breaker & Consecutive Loss Check (ApexHunter)
         acc = mt5.account_info()
+        allowed, risk_reason = self.risk_guardian.is_symbol_trading_allowed(canonical, acc.balance, acc.equity)
+        if not allowed:
+            audit_record["decision"] = "BLOCKED_CIRCUIT_BREAKER"
+            audit_record["reason"] = risk_reason
+            self.audit_logger.log_candle(audit_record)
+            self.logger.warning(f"ApexHunter {canonical} entry blocked by Risk Guardian: {risk_reason}")
+            return
+
         risk_usd = self.risk_guardian.calculate_fitted_risk_usd(acc.balance, acc.equity)
         if risk_usd < 2.0:
             audit_record["decision"] = "BLOCKED_MIN_RISK"
@@ -1314,8 +1321,16 @@ class MasterUnifiedBot:
             self.audit_logger.log_candle(audit_record)
             return
 
-        # 4. Fitted Dollar Risk Calculation
+        # 4. Risk Guardian Circuit Breaker & Consecutive Loss Check (ApexHunter)
         acc = mt5.account_info()
+        allowed, risk_reason = self.risk_guardian.is_symbol_trading_allowed(canonical, acc.balance, acc.equity)
+        if not allowed:
+            audit_record["decision"] = "BLOCKED_CIRCUIT_BREAKER"
+            audit_record["reason"] = risk_reason
+            self.audit_logger.log_candle(audit_record)
+            self.logger.warning(f"ApexHunter {canonical} entry blocked by Risk Guardian: {risk_reason}")
+            return
+
         risk_usd = self.risk_guardian.calculate_fitted_risk_usd(acc.balance, acc.equity)
         if risk_usd < 2.0:
             audit_record["decision"] = "BLOCKED_MIN_RISK"
@@ -1501,6 +1516,7 @@ class MasterUnifiedBot:
                 sl_hit = (current_p <= pos['sl']) if is_buy else (current_p >= pos['sl'])
                 if sl_hit:
                     if pos['tp1_hit']:
+                        self.risk_guardian.record_trade_result(sym, is_loss=False)
                         console.print(f"\n[bold bright_yellow][DRY-RUN EXIT][/] {sym} Sibling orders exited at Breakeven (+0.2R) at {current_p:.5f}.")
                         self.notifier.send_message(
                             f"🛡️ <b>[BREAKEVEN EXIT]</b>\n"
@@ -1508,6 +1524,7 @@ class MasterUnifiedBot:
                             f"Sibling orders stopped out at Breakeven buffer (+0.2R). Trade concluded with net profit."
                         )
                     else:
+                        self.risk_guardian.record_trade_result(sym, is_loss=True)
                         console.print(f"\n[bold red][DRY-RUN EXIT][/] {sym} Trade hit Stop Loss at {current_p:.5f}.")
                         self.notifier.send_message(
                             f"❌ <b>[STOP LOSS HIT]</b>\n"
@@ -1548,6 +1565,7 @@ class MasterUnifiedBot:
                             remaining_splits.append(sp)
                     pos['active_splits'] = remaining_splits
                     if not remaining_splits:
+                        self.risk_guardian.record_trade_result(sym, is_loss=False)
                         console.print(f"[bold bright_green][TRADE COMPLETE][/] All Take Profit targets reached for {sym}!")
                         del self.open_positions[sym]
             return
@@ -1580,17 +1598,57 @@ class MasterUnifiedBot:
             active_tix = [t for t in pos['tickets'] if t in live_tickets]
             if not active_tix:
                 console.print(f"[bold yellow][TRADE CLOSED][/] All split orders for {sym} have exited.")
+                if deals:
+                    closed_deals = [d for d in deals if d.order in pos['tickets']]
+                    total_pnl = sum(d.profit for d in closed_deals)
+                    is_loss = (total_pnl < 0.0)
+                    self.risk_guardian.record_trade_result(sym, is_loss=is_loss)
+                    if is_loss:
+                        self.logger.warning(f"[RISK GUARDIAN] {sym} trade concluded with loss (${total_pnl:.2f}). Consecutive daily losses: {self.risk_guardian.symbol_consecutive_losses.get(sym, 0)}")
+                    else:
+                        self.logger.info(f"[RISK GUARDIAN] {sym} trade concluded with profit/BE (${total_pnl:.2f}). Consecutive loss counter reset.")
                 del self.open_positions[sym]
 
     def modify_position_sl(self, ticket: int, broker_sym: str, new_sl: float) -> bool:
         """Modifies MT5 position Stop Loss while preserving its original Take Profit."""
+        import time
+        now_ts = time.time()
+        # Cooldown check to prevent hammering MT5 on retries
+        if not self.order_manager.can_attempt_modification(ticket, now_ts, cooldown_sec=30.0):
+            return False
+
         specs = self.bridge.get_specs(broker_sym)
         digits = specs.get('digits', 5)
+        point = specs.get('point', 0.0001)
+
         pos_list = mt5.positions_get(ticket=ticket)
         if not pos_list:
             return False
         pos = pos_list[0]
 
+        # Verify broker stops level distance before sending modification request
+        s_info = mt5.symbol_info(broker_sym)
+        stops_level = s_info.stops_level if s_info else 10
+        tick = mt5.symbol_info_tick(broker_sym)
+        price_curr = (tick.ask if pos.type == mt5.ORDER_TYPE_SELL else tick.bid) if tick else pos.price_current
+
+        is_valid_distance = OrderManager.check_price_stops_distance(
+            order_type=pos.type,
+            current_price=price_curr,
+            target_sl=new_sl,
+            stops_level_pts=stops_level,
+            point=point
+        )
+        if not is_valid_distance:
+            self.order_manager.record_modification_attempt(ticket, now_ts)
+            self.logger.info(
+                f"[SL SHIFT PENDING] Ticket #{ticket} on {broker_sym}: Market price ({price_curr:.{digits}f}) "
+                f"too close to target Breakeven SL ({new_sl:.{digits}f}) for broker stops_level ({stops_level} pts). "
+                f"Waiting for price advance (cooling down 30s)..."
+            )
+            return False
+
+        self.order_manager.record_modification_attempt(ticket, now_ts)
         req = {
             "action": mt5.TRADE_ACTION_SLTP,
             "position": ticket,

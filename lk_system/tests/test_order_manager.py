@@ -132,5 +132,62 @@ class TestOrderManager(unittest.TestCase):
         self.assertEqual(grp['tickets'], [201, 202])
         self.assertEqual(grp['symbol'], "EURUSD")
 
+    def test_price_stops_level_validation(self):
+        # SELL trade: price = 1.09762, stops_level = 10 pts (0.00010 point)
+        # Broker requires Ask + stops_level * point <= SL (i.e. SL must be at least 1.09772)
+        # If new_sl is 1.09758 (below price or within stops_level), it must be REJECTED as invalid stops!
+        valid_sell = OrderManager.check_price_stops_distance(
+            order_type=1, # SELL
+            current_price=1.09762,
+            target_sl=1.09758,
+            stops_level_pts=10,
+            point=0.00001
+        )
+        self.assertFalse(valid_sell, "SELL with SL below market or within stops_level must be rejected before MT5")
+
+        # Valid SELL: SL well above market
+        valid_sell_ok = OrderManager.check_price_stops_distance(
+            order_type=1,
+            current_price=1.09740,
+            target_sl=1.09758,
+            stops_level_pts=10,
+            point=0.00001
+        )
+        self.assertTrue(valid_sell_ok)
+
+        # BUY trade: price = 1.09750, stops_level = 10 pts
+        # Broker requires Bid - stops_level * point >= SL (i.e. SL must be at most 1.09740)
+        valid_buy = OrderManager.check_price_stops_distance(
+            order_type=0, # BUY
+            current_price=1.09750,
+            target_sl=1.09745,
+            stops_level_pts=10,
+            point=0.00001
+        )
+        self.assertFalse(valid_buy, "BUY with SL too close to market or above market must be rejected before MT5")
+
+        valid_buy_ok = OrderManager.check_price_stops_distance(
+            order_type=0,
+            current_price=1.09760,
+            target_sl=1.09740,
+            stops_level_pts=10,
+            point=0.00001
+        )
+        self.assertTrue(valid_buy_ok)
+
+    def test_modification_cooldown(self):
+        # Test ticket modification cooldown (prevent hammering MT5 every second)
+        ticket = 5731212961
+        now_ts = 1000.0
+        # First attempt is allowed
+        self.assertTrue(self.mgr.can_attempt_modification(ticket, current_time=now_ts, cooldown_sec=30.0))
+        self.mgr.record_modification_attempt(ticket, timestamp=now_ts)
+
+        # 5 seconds later: should be blocked by cooldown
+        self.assertFalse(self.mgr.can_attempt_modification(ticket, current_time=now_ts + 5.0, cooldown_sec=30.0))
+
+        # 31 seconds later: should be allowed again
+        self.assertTrue(self.mgr.can_attempt_modification(ticket, current_time=now_ts + 31.0, cooldown_sec=30.0))
+
 if __name__ == '__main__':
     unittest.main()
