@@ -144,22 +144,23 @@ class TradeNotifier:
                 if item is None:
                     break
 
-                platform, payload = item
-                if platform == "telegram":
-                    token = self.tg_token
-                    chat_id = self.tg_chat_id
-                    if token and chat_id:
-                        self._send_telegram_http(token, chat_id, payload.get("text", ""))
-                elif platform == "discord":
-                    webhook_url = self.discord_url
-                    if webhook_url:
-                        self._send_discord_http(
-                            webhook_url,
-                            payload.get("content", ""),
-                            payload.get("embed", None)
-                        )
-
-                self.msg_queue.task_done()
+                try:
+                    platform, payload = item
+                    if platform == "telegram":
+                        token = self.tg_token
+                        chat_id = self.tg_chat_id
+                        if token and chat_id:
+                            self._send_telegram_http(token, chat_id, payload.get("text", ""))
+                    elif platform == "discord":
+                        webhook_url = self.discord_url
+                        if webhook_url:
+                            self._send_discord_http(
+                                webhook_url,
+                                payload.get("content", ""),
+                                payload.get("embed", None)
+                            )
+                finally:
+                    self.msg_queue.task_done()
             except Exception as e:
                 print(f"[TradeNotifier Worker Error] {e}")
                 time.sleep(0.5)
