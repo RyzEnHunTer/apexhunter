@@ -249,7 +249,18 @@ class AccountConfigManager:
         cfg["last_updated"] = datetime.now(timezone.utc).isoformat()
         self.save()
 
-        if notifier and hasattr(notifier, "send_message"):
+        if notifier and hasattr(notifier, "notify_phase_transition"):
+            start_b = cfg.get("phase_start_balance", 0.0)
+            notifier.notify_phase_transition(
+                account_id=str(acc_id),
+                new_phase_name=phase_name,
+                start_balance=start_b,
+                target_pct=target_pct,
+                active_risk_pct=active_r,
+                is_custom_risk_on=use_custom,
+                server=cfg.get("server", "MT5")
+            )
+        elif notifier and hasattr(notifier, "send_message"):
             start_b = cfg.get("phase_start_balance", 0.0)
             notifier.send_message(
                 f"🏆 <b>[PROP FIRM LIFECYCLE UPDATE]</b>\n"

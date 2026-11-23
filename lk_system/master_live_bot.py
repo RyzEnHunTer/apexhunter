@@ -176,6 +176,190 @@ class MasterUnifiedBot:
         self.state_exporter = LiveStateExporter()
         self.last_state_export: float = 0.0
 
+        # 11. Real-Time Session & Alert Surveillance State
+        self.current_session_state: str = "INITIALIZING"
+        self.entry_start_hour_utc: int = 6
+        self.entry_end_hour_utc: int = 19
+        self.last_daily_summary_date: Optional[Any] = None
+
+    def get_session_state(self, now_utc: datetime) -> str:
+        """Returns the trading window / killzone state for a given UTC datetime."""
+        if self.is_weekend_market_closed(now_utc):
+            return "PAUSED_WEEKEND"
+
+        h = now_utc.hour
+        if h == 9:
+            return "PAUSED_TRAP_09"
+        elif h == 13:
+            return "PAUSED_TRAP_13"
+        elif h < self.entry_start_hour_utc or h >= self.entry_end_hour_utc:
+            return "PAUSED_ASIAN"
+        elif self.entry_start_hour_utc <= h < 12:
+            return "ACTIVE_LONDON"
+        else:
+            return "ACTIVE_NY"
+
+    def check_session_and_trap_alerts(self, now_utc: datetime, is_startup: bool = False):
+        """Monitors and broadcasts trading pause and resume milestones across killzones, trap hours, and sessions."""
+        new_state = self.get_session_state(now_utc)
+
+        if is_startup:
+            self.current_session_state = new_state
+            if new_state == "PAUSED_WEEKEND":
+                console.print("\n[bold yellow][STATUS: PAUSED - WEEKEND MARKET CLOSED][/] Resumes: Monday 06:00 UTC (11:30 IST)")
+                self.notifier.notify_trading_paused(
+                    zone_title="Weekend Market Closed (Saturday & Sunday)",
+                    reason="Bot started during weekend market closure. Forex & CFD markets are closed.",
+                    resume_time_str="Monday 06:00 UTC (11:30 IST) - London Session Open",
+                    is_startup=True
+                )
+            elif new_state == "PAUSED_TRAP_09":
+                console.print("\n[bold yellow][STATUS: PAUSED IN MORNING DEAD TRAP HOUR][/] Resumes: 10:00 UTC (15:30 IST)")
+                self.notifier.notify_trading_paused(
+                    zone_title="Morning Dead Trap Hour / Killzone Pause (09:00-10:00 UTC / 14:30-15:30 IST)",
+                    reason="Bot started during London midday lull. Scanning suspended to avoid false breakout traps.",
+                    resume_time_str="10:00 UTC (15:30 IST)",
+                    is_startup=True
+                )
+            elif new_state == "PAUSED_TRAP_13":
+                console.print("\n[bold yellow][STATUS: PAUSED IN US DEAD TRAP HOUR][/] Resumes: 14:00 UTC (19:30 IST)")
+                self.notifier.notify_trading_paused(
+                    zone_title="US Dead Trap Hour / Killzone Pause (13:00-14:00 UTC / 18:30-19:30 IST)",
+                    reason="Bot started during US pre-market transition chop. Trade arming and execution suspended.",
+                    resume_time_str="14:00 UTC (19:30 IST)",
+                    is_startup=True
+                )
+            elif new_state == "PAUSED_ASIAN":
+                console.print("\n[bold yellow][STATUS: PAUSED IN ASIAN RANGE FORMATION][/] Resumes: 06:00 UTC (11:30 IST)")
+                self.notifier.notify_trading_paused(
+                    zone_title="Asian Session Range Formation (19:00-06:00 UTC / 00:30-11:30 IST)",
+                    reason="Bot started outside active trading window. Asian session is designated for liquidity range building (entries disabled).",
+                    resume_time_str="06:00 UTC (11:30 IST) - London Session Open",
+                    is_startup=True
+                )
+            return
+
+        if new_state == self.current_session_state:
+            return
+
+        prev_state = self.current_session_state
+        self.current_session_state = new_state
+
+        if new_state == "PAUSED_WEEKEND":
+            console.print("\n[bold yellow][TRADING PAUSED: WEEKEND MARKET CLOSED][/] Forex & CFD markets closed for the weekend.")
+            self.notifier.notify_trading_paused(
+                zone_title="Weekend Market Closed (Saturday & Sunday)",
+                reason="Forex & CFD markets closed for the weekend. All scanning and execution suspended.",
+                resume_time_str="Monday 06:00 UTC (11:30 IST) - London Session Open"
+            )
+        elif new_state == "PAUSED_TRAP_09":
+            console.print("\n[bold yellow][TRADING PAUSED: MORNING DEAD TRAP HOUR (09:00 UTC / 14:30 IST)][/]")
+            self.notifier.notify_trading_paused(
+                zone_title="Morning Dead Trap Hour / Killzone Pause (09:00-10:00 UTC / 14:30-15:30 IST)",
+                reason="London midday liquidity lull. High risk of false breakout traps.",
+                resume_time_str="10:00 UTC (15:30 IST)"
+            )
+        elif new_state == "PAUSED_TRAP_13":
+            console.print("\n[bold yellow][TRADING PAUSED: US DEAD TRAP HOUR (13:00 UTC / 18:30 IST)][/]")
+            self.notifier.notify_trading_paused(
+                zone_title="US Dead Trap Hour / Killzone Pause (13:00-14:00 UTC / 18:30-19:30 IST)",
+                reason="US pre-market transition chop. Trade arming and execution suspended.",
+                resume_time_str="14:00 UTC (19:30 IST)"
+            )
+        elif new_state == "PAUSED_ASIAN":
+            console.print("\n[bold yellow][TRADING PAUSED: END-OF-DAY / ASIAN RANGE FORMATION][/]")
+            self.notifier.notify_trading_paused(
+                zone_title="End-of-Day / Asian Session Range Formation (19:00-06:00 UTC)",
+                reason="Active trading session closed. Asian session is designated for liquidity range building (entries disabled).",
+                resume_time_str="06:00 UTC (11:30 IST) - London Session Open"
+            )
+        elif new_state == "ACTIVE_LONDON":
+            if prev_state in ["PAUSED_ASIAN", "PAUSED_WEEKEND"]:
+                console.print("\n[bold bright_green][TRADING RESUMED: LONDON SESSION OPEN (06:00 UTC / 11:30 IST)][/]")
+                self.notifier.notify_trading_resumed(
+                    zone_title="London Session Opened (06:00 UTC / 11:30 IST)",
+                    session_name="European / London Killzone Window",
+                    details="Weekend closed / Asian range concluded. Active market surveillance and trade execution restored."
+                )
+            elif prev_state == "PAUSED_TRAP_09":
+                console.print("\n[bold bright_green][TRADING RESUMED: MORNING DEAD TRAP HOUR ENDED (10:00 UTC / 15:30 IST)][/]")
+                self.notifier.notify_trading_resumed(
+                    zone_title="Morning Dead Trap Hour Ended (10:00 UTC / 15:30 IST)",
+                    session_name="Pre-New York Window",
+                    details="Midday trap period concluded. Active market surveillance and trade execution restored."
+                )
+        elif new_state == "ACTIVE_NY":
+            if prev_state == "ACTIVE_LONDON":
+                console.print("\n[bold bright_blue][SESSION UPDATE: NEW YORK SESSION OPEN (12:00 UTC / 17:30 IST)][/]")
+                self.notifier.notify_session(
+                    session_name="New York Session (12:00 UTC / 17:30 IST)",
+                    status="OPENED - US Killzone Window Active"
+                )
+            elif prev_state == "PAUSED_TRAP_13":
+                console.print("\n[bold bright_green][TRADING RESUMED: US DEAD TRAP HOUR ENDED (14:00 UTC / 19:30 IST)][/]")
+                self.notifier.notify_trading_resumed(
+                    zone_title="US Dead Trap Hour Ended (14:00 UTC / 19:30 IST)",
+                    session_name="New York Active Trading Session",
+                    details="US pre-market transition ended. Active market surveillance restored."
+                )
+
+    def _run_daily_summary(self, audit_date: Any):
+        """Compiles end-of-day scorecard at 21:05 UTC (market close) and dispatches via notifier."""
+        try:
+            now_utc = datetime.now(timezone.utc)
+            acc = mt5.account_info()
+            cur_equity = float(acc.equity) if acc else self.risk_guardian.day_start_balance
+            cur_balance = float(acc.balance) if acc else self.risk_guardian.day_start_balance
+            start_bal = self.risk_guardian.day_start_balance if self.risk_guardian.day_start_balance > 0 else cur_balance
+            day_pnl = cur_balance - start_bal
+            day_pnl_pct = (day_pnl / start_bal * 100.0) if start_bal > 0 else 0.0
+            cur_daily_loss = max(0.0, -day_pnl)
+            daily_dd_pct = (cur_daily_loss / start_bal * 100.0) if start_bal > 0 else 0.0
+            max_allowed_loss = start_bal * self.risk_guardian.daily_cb_pct
+            cushion_remaining = max(0.0, max_allowed_loss - cur_daily_loss)
+
+            day_start_dt = datetime(audit_date.year, audit_date.month, audit_date.day, 0, 0, tzinfo=timezone.utc)
+            deals = mt5.history_deals_get(day_start_dt, now_utc)
+            closed_deals = []
+            win_count = 0
+            loss_count = 0
+
+            if deals:
+                exit_deals = [d for d in deals if d.entry == 1]
+                for d in exit_deals:
+                    p = float(d.profit + d.commission + d.swap)
+                    if p > 0:
+                        win_count += 1
+                    elif p < 0:
+                        loss_count += 1
+                    dir_str = "BUY" if d.type == 0 else "SELL"
+                    closed_deals.append({
+                        "ticket": d.ticket,
+                        "symbol": d.symbol,
+                        "type": dir_str,
+                        "volume": d.volume,
+                        "profit": round(p, 2),
+                        "comment": d.comment
+                    })
+
+            self.notifier.notify_daily_summary(
+                date_str=audit_date.strftime("%Y-%m-%d"),
+                starting_equity=start_bal,
+                closing_equity=cur_equity,
+                balance=cur_balance,
+                trades_count=len(closed_deals),
+                winning_trades=win_count,
+                losing_trades=loss_count,
+                daily_pnl=round(day_pnl, 2),
+                daily_pnl_pct=round(day_pnl_pct, 2),
+                daily_dd_pct=round(daily_dd_pct, 2),
+                cushion_remaining=round(cushion_remaining, 2),
+                closed_trades_details=closed_deals
+            )
+            self.logger.info(f"[DAILY SCORECARD DISPATCHED] Date: {audit_date}, Realized PnL: ${day_pnl:,.2f} ({day_pnl_pct:+.2f}%), Trades: {len(closed_deals)}")
+        except Exception as e:
+            self.logger.error(f"[DAILY SCORECARD ERROR] Failed to dispatch daily summary: {e}")
+
     def get_dynamic_market_close_hour_utc(self, dt: Optional[datetime] = None) -> int:
         """Dynamically returns 21 in Summer (EDT) and 22 in Winter (EST) via America/New_York DST anchor."""
         if dt is None:
@@ -850,14 +1034,21 @@ class MasterUnifiedBot:
                             'entry_time': datetime.now(timezone.utc)
                         }
 
-        self.notifier.send_message(
-            f"🟢 <b>Master Institutional Unified Bot Initialized!</b>\n"
-            f"Account: <code>{acc.login}</code> ({acc.server})\n"
-            f"Mode: <b>{mode_str}</b>\n"
-            f"Strategy Setup: <b>Simultaneous Dual-Engine (No Switcher)</b>\n"
-            f"Balance: ${acc.balance:,.2f} | Equity: ${acc.equity:,.2f}\n"
-            f"Safeguards: 4.0% Daily CB | 8.5% Floor CB | 10m News Close | Spread Guardian"
+        self.notifier.notify_startup(
+            account_id=acc.login,
+            server=acc.server,
+            mode="live" if not self.dry_run else "dry_run",
+            equity=acc.equity,
+            balance=acc.balance,
+            risk_pct=self.risk_guardian.normal_risk_pct * 100.0,
+            daily_dd=self.risk_guardian.daily_cb_pct * 100.0,
+            max_dd=self.risk_guardian.max_floor_cb_pct * 100.0,
+            symbols=['XAUUSD', 'NAS100', 'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'EURJPY', 'USDCAD'],
+            daily_cb=self.risk_guardian.daily_cb_pct * 100.0,
+            max_cb=self.risk_guardian.max_floor_cb_pct * 100.0,
+            strategy_desc="Simultaneous Dual-Engine: ApexHunter (Gold, Nasdaq) + LK SMC (6 Forex Pairs)"
         )
+        self.check_session_and_trap_alerts(datetime.now(timezone.utc), is_startup=True)
         self.logger.info(
             f"MasterUnifiedBot initialized on {term.company} ({acc.server}) - Account: {acc.login}, "
             f"Balance: ${acc.balance:,.2f}, Equity: ${acc.equity:,.2f}, Mode: {mode_str}, "
@@ -887,12 +1078,21 @@ class MasterUnifiedBot:
             current_balance = acc.balance
             current_equity = acc.equity
 
+            # 0. Real-Time Killzone, Dead Trap Hour, & Session Alerts
+            self.check_session_and_trap_alerts(now_utc)
+
             # 1. Update High-Water Mark peak equity & Daily Anchor at 00:00 UTC
             self.acc_mgr.update_high_water_mark(str(acc.login), current_equity)
             if self.risk_guardian.reset_daily_if_new_day(now_utc, current_balance):
                 self._cb_notified_today = False
                 console.print(f"\n[bold bright_green][DAILY ROLLOVER][/] 00:00 UTC Rollover Anchor Updated: Starting Balance = ${current_balance:,.2f}")
                 self.logger.info(f"00:00 UTC Daily Rollover Anchor Updated: Starting Balance = ${current_balance:,.2f}")
+
+            # 1b. End-of-Day Daily Performance Scorecard at True Market Close (21:05 UTC)
+            market_close_h = self.get_dynamic_market_close_hour_utc(now_utc)
+            if now_utc.hour == market_close_h and now_utc.minute >= 5 and getattr(self, "last_daily_summary_date", None) != now_utc.date():
+                self.last_daily_summary_date = now_utc.date()
+                self._run_daily_summary(now_utc.date())
 
             # 2. Check Prop Firm Challenge Milestone Target & Target Lock
             is_reached, target_info = self.acc_mgr.check_target_progress(str(acc.login), current_balance)
@@ -905,12 +1105,15 @@ class MasterUnifiedBot:
                     console.print(f"\n🏆 [bold bright_green][EVALUATION TARGET ACHIEVED!][/] Phase {phase_num} profit milestone reached! Balance: ${current_balance:,.2f}")
                     console.print(f"🔒 [bold bright_yellow][TARGET LOCK ENGAGED][/] Trading halted to protect evaluation pass.")
                     self.logger.info(f"[TARGET REACHED] Phase {phase_num} profit milestone reached! Balance: ${current_balance:,.2f} - Trading halted.")
-                    self.notifier.send_message(
-                        f"🏆 <b>[PROP FIRM MILESTONE REACHED!]</b>\n"
-                        f"Account: <code>{acc.login}</code> ({acc.server})\n"
-                        f"Phase {phase_num} Profit Target (+{tgt_pct:.1f}%) Banked!\n"
-                        f"Current Balance: <b>${current_balance:,.2f}</b> (Target: ${target_info.get('target_dollar', 0.0):,.2f})\n"
-                        f"🔒 <b>Trading Halted & Protected</b>. Advance phase via menu [3] to resume."
+                    self.notifier.notify_challenge_passed(
+                        account_id=str(acc.login),
+                        phase=phase_num,
+                        target_pct=tgt_pct,
+                        current_balance=current_balance,
+                        profit_dollar=current_balance - self.risk_guardian.baseline_capital,
+                        profit_pct=((current_balance - self.risk_guardian.baseline_capital) / self.risk_guardian.baseline_capital) * 100.0,
+                        is_final=(phase_num == 2 or str(phase_num).lower() == "funded"),
+                        server=acc.server
                     )
 
             if self.challenge_target_reached:
@@ -925,7 +1128,16 @@ class MasterUnifiedBot:
                     self._cb_notified_today = True
                     console.print(f"\n[bold red][CRITICAL HALT][/] {reason}")
                     self.logger.critical(f"Circuit Breaker Triggered: {reason}")
-                    self.notifier.send_message(f"🛑 <b>CIRCUIT BREAKER TRIGGERED!</b>\n{reason}\nTrading halted.")
+                    cb_type = "floor" if self.risk_guardian.max_floor_cb_breached else "daily"
+                    limit_pct = (self.risk_guardian.max_floor_cb_pct * 100.0) if cb_type == "floor" else (self.risk_guardian.daily_cb_pct * 100.0)
+                    loss_amt = max(0.0, self.risk_guardian.day_start_balance - current_equity)
+                    self.notifier.notify_circuit_breaker(
+                        cb_type=cb_type,
+                        current_equity=current_equity,
+                        limit_pct=limit_pct,
+                        loss_amount=loss_amt,
+                        hard_limit_pct=self.risk_guardian.hard_floor_pct * 100.0
+                    )
                     if self.risk_guardian.hard_floor_breached:
                         self.logger.critical(f"Hard Floor Breached! Emergency closing all positions: {reason}")
                         self.emergency_close_all(reason=f"Hard Floor Breached: {reason}")
@@ -998,11 +1210,13 @@ class MasterUnifiedBot:
             )
             if should_close:
                 console.print(f"\n🚨 [bold bright_yellow][NEWS AUTO-CLOSE ({self.news_auto_close_min}m BEFORE)][/] Liquidating {sym} ahead of {event_desc} to eliminate gap slippage!")
-                self.notifier.send_message(
-                    f"🚨 <b>[NEWS AUTO-CLOSE ({self.news_auto_close_min}m BEFORE)]</b>\n"
-                    f"Symbol: <b>{sym}</b>\n"
-                    f"Upcoming Event: {event_desc}\n"
-                    f"Action: Closed all positions at market price with zero slippage."
+                rel_str = f"{now_utc.strftime('%H:%M')} UTC"
+                res_str = f"{(now_utc + timedelta(minutes=self.news_embargo_after_min + self.news_auto_close_min)).strftime('%H:%M')} UTC"
+                self.notifier.notify_news_shield_activated(
+                    title=event_desc,
+                    country=sym[:3],
+                    release_time_str=rel_str,
+                    resume_time_str=res_str
                 )
                 self.close_position_by_symbol(sym, reason=f"News Auto-Close: {event_desc}")
 
@@ -1010,11 +1224,19 @@ class MasterUnifiedBot:
         """Liquidates open positions on Friday at 16:45 NY (Dynamic DST) to protect against weekend gap risk."""
         if self.is_friday_weekend_close_window(now_utc) and self.open_positions:
             console.print(f"\n🛡️ [bold bright_yellow][WEEKEND SHIELD][/] Friday 16:45 NY market close reached. Liquidating all open positions to eliminate weekend gap risk.")
-            for sym in list(self.open_positions.keys()):
+            closed_summary = []
+            for sym, pos in list(self.open_positions.items()):
                 self.close_position_by_symbol(sym, reason="Friday Weekend Shield (16:45 NY / Dynamic DST)")
-            self.notifier.send_message(
-                f"🛡️ <b>[WEEKEND SHIELD ACTIVATED]</b>\n"
-                f"All open positions closed before weekend close at normal market pricing."
+                closed_summary.append({
+                    "symbol": sym,
+                    "ticket": pos.get('tickets', [0])[0] if pos.get('tickets') else 0,
+                    "volume": sum(sp.get('volume', 0.0) for sp in pos.get('splits', [])),
+                    "pnl": 0.0
+                })
+            self.notifier.notify_weekend_close(
+                closed_trades=closed_summary,
+                total_pnl=0.0,
+                resume_time_str="Monday 06:00 UTC (11:30 IST) - London Session Open"
             )
 
     def evaluate_apexhunter_setup(self, canonical: str, broker_sym: str, bar_5m: pd.Series, now_utc: datetime):
@@ -1458,12 +1680,18 @@ class MasterUnifiedBot:
                 'entry_time': datetime.now(timezone.utc)
             }
             self.order_manager.register_position_group(group_id, strategy, symbol, entry_price, stop_loss, be_sl, tickets)
-            self.notifier.send_message(
-                f"🎯 <b>[NEW TRADE OPENED ({dir_str})]</b>\n"
-                f"Strategy: {strategy}\n"
-                f"Symbol: <b>{symbol}</b> | Total Lots: {total_lots:.2f}\n"
-                f"Entry: {entry_price:.{digits}f} | SL: {stop_loss:.{digits}f}\n"
-                f"Splits: {len(splits)} Orders Placed with Server-Side TPs"
+            q = self.bridge.get_latest_quote(symbol)
+            self.notifier.notify_trade_opened(
+                symbol=symbol,
+                direction=dir_str,
+                entry_price=entry_price,
+                spread=q['spread'] if q else 0.0,
+                total_lots=total_lots,
+                sl=stop_loss,
+                splits=splits,
+                tickets=tickets,
+                strategy=strategy,
+                is_dry_run=True
             )
             return
 
@@ -1511,12 +1739,18 @@ class MasterUnifiedBot:
                 'entry_time': datetime.now(timezone.utc)
             }
             self.order_manager.register_position_group(group_id, strategy, symbol, live_entry_p, stop_loss, be_sl, tickets)
-            self.notifier.send_message(
-                f"🎯 <b>[LIVE TRADE EXECUTED ({dir_str})]</b>\n"
-                f"Strategy: {strategy}\n"
-                f"Symbol: <b>{symbol}</b> | Total Lots: {total_lots:.2f}\n"
-                f"Entry: {live_entry_p:.{digits}f} | SL: {stop_loss:.{digits}f}\n"
-                f"Tickets: {tickets}"
+            q = self.bridge.get_latest_quote(symbol)
+            self.notifier.notify_trade_opened(
+                symbol=symbol,
+                direction=dir_str,
+                entry_price=live_entry_p,
+                spread=q['spread'] if q else 0.0,
+                total_lots=total_lots,
+                sl=stop_loss,
+                splits=splits,
+                tickets=tickets,
+                strategy=strategy,
+                is_dry_run=False
             )
 
     def manage_active_positions(self):
@@ -1537,21 +1771,38 @@ class MasterUnifiedBot:
                 # 1. Check Stop Loss Hit
                 sl_hit = (current_p <= pos['sl']) if is_buy else (current_p >= pos['sl'])
                 if sl_hit:
+                    acc_info = mt5.account_info()
+                    bal = acc_info.balance if acc_info else self.risk_guardian.day_start_balance
+                    daily_loss = max(0.0, self.risk_guardian.day_start_balance - (acc_info.equity if acc_info else bal))
+                    rem_cushion = max(0.0, (self.risk_guardian.day_start_balance * self.risk_guardian.daily_cb_pct) - daily_loss)
+
                     if pos['tp1_hit']:
                         self.risk_guardian.record_trade_result(sym, is_loss=False)
+                        pnl_est = self.base_capital * self.risk_guardian.normal_risk_pct * 0.4
                         console.print(f"\n[bold bright_yellow][DRY-RUN EXIT][/] {sym} Sibling orders exited at Breakeven (+0.2R) at {current_p:.5f}.")
-                        self.notifier.send_message(
-                            f"🛡️ <b>[BREAKEVEN EXIT]</b>\n"
-                            f"Symbol: <b>{sym}</b>\n"
-                            f"Sibling orders stopped out at Breakeven buffer (+0.2R). Trade concluded with net profit."
+                        self.notifier.notify_trade_closed(
+                            symbol=sym,
+                            ticket=pos['tickets'][-1] if pos['tickets'] else 0,
+                            exit_reason="Breakeven Buffer Hit (+0.2R)",
+                            pnl=pnl_est,
+                            day_pnl=bal - self.risk_guardian.day_start_balance,
+                            remaining_cushion=rem_cushion,
+                            daily_cb_pct=self.risk_guardian.daily_cb_pct * 100.0,
+                            strategy=pos.get('strategy', 'ApexHunter')
                         )
                     else:
                         self.risk_guardian.record_trade_result(sym, is_loss=True)
+                        pnl_loss = -self.base_capital * self.risk_guardian.normal_risk_pct
                         console.print(f"\n[bold red][DRY-RUN EXIT][/] {sym} Trade hit Stop Loss at {current_p:.5f}.")
-                        self.notifier.send_message(
-                            f"❌ <b>[STOP LOSS HIT]</b>\n"
-                            f"Symbol: <b>{sym}</b>\n"
-                            f"All split orders stopped out at {current_p:.5f}."
+                        self.notifier.notify_trade_closed(
+                            symbol=sym,
+                            ticket=pos['tickets'][0] if pos['tickets'] else 0,
+                            exit_reason="Stop Loss Hit",
+                            pnl=pnl_loss,
+                            day_pnl=bal - self.risk_guardian.day_start_balance,
+                            remaining_cushion=rem_cushion,
+                            daily_cb_pct=self.risk_guardian.daily_cb_pct * 100.0,
+                            strategy=pos.get('strategy', 'ApexHunter')
                         )
                     del self.open_positions[sym]
                     continue
@@ -1564,11 +1815,14 @@ class MasterUnifiedBot:
                         pos['tp1_hit'] = True
                         pos['sl'] = pos['be_sl'] # Move active SL to Breakeven
                         pos['active_splits'] = pos['splits'][1:]
+                        sibling_tix = pos['tickets'][1:] if len(pos['tickets']) > 1 else pos['tickets']
                         console.print(f"\n[bold bright_green][TARGET HIT][/] {sym} Order 1 hit TP1! Sibling orders moved to Breakeven ({pos['be_sl']:.5f}).")
-                        self.notifier.send_message(
-                            f"🎯 <b>[TP1 BANKED]</b>\n"
-                            f"Symbol: <b>{sym}</b>\n"
-                            f"Order 1 banked TP1! Sibling orders moved to Breakeven (+0.2R). Position is now 100% risk-free!"
+                        self.notifier.notify_tp1_breakeven(
+                            symbol=sym,
+                            ticket_a=pos['tickets'][0],
+                            ticket_b=sibling_tix,
+                            be_sl=pos['be_sl'],
+                            strategy=pos.get('strategy', 'ApexHunter')
                         )
 
                 # 3. Check Higher TPs (TP2, TP3)
@@ -1578,17 +1832,27 @@ class MasterUnifiedBot:
                         tp_reached = (current_p >= sp['tp']) if is_buy else (current_p <= sp['tp'])
                         if tp_reached:
                             console.print(f"\n[bold bright_green][TARGET HIT][/] {sym} Order ({sp['label']}) hit Take Profit at {sp['tp']:.5f}!")
-                            self.notifier.send_message(
-                                f"💰 <b>[TARGET BANKED]</b>\n"
-                                f"Symbol: <b>{sym}</b> | Tier: <b>{sp['label']}</b>\n"
-                                f"Take Profit banked at {sp['tp']:.5f}!"
-                            )
                         else:
                             remaining_splits.append(sp)
                     pos['active_splits'] = remaining_splits
                     if not remaining_splits:
                         self.risk_guardian.record_trade_result(sym, is_loss=False)
                         console.print(f"[bold bright_green][TRADE COMPLETE][/] All Take Profit targets reached for {sym}!")
+                        acc_info = mt5.account_info()
+                        bal = acc_info.balance if acc_info else self.risk_guardian.day_start_balance
+                        daily_loss = max(0.0, self.risk_guardian.day_start_balance - (acc_info.equity if acc_info else bal))
+                        rem_cushion = max(0.0, (self.risk_guardian.day_start_balance * self.risk_guardian.daily_cb_pct) - daily_loss)
+                        pnl_win = self.base_capital * self.risk_guardian.normal_risk_pct * 1.8
+                        self.notifier.notify_trade_closed(
+                            symbol=sym,
+                            ticket=pos['tickets'][-1] if pos['tickets'] else 0,
+                            exit_reason="Full Take Profit Targets Banked",
+                            pnl=pnl_win,
+                            day_pnl=bal - self.risk_guardian.day_start_balance,
+                            remaining_cushion=rem_cushion,
+                            daily_cb_pct=self.risk_guardian.daily_cb_pct * 100.0,
+                            strategy=pos.get('strategy', 'ApexHunter')
+                        )
                         del self.open_positions[sym]
             return
 
@@ -1608,11 +1872,12 @@ class MasterUnifiedBot:
             success = self.modify_position_sl(ticket, broker_sym, new_sl)
             if success:
                 self.order_manager.record_ticket_modified(m['group_id'], ticket)
-                self.notifier.send_message(
-                    f"🛡️ <b>[BREAKEVEN APPLIED]</b>\n"
-                    f"Symbol: <b>{m['symbol']}</b> | Ticket: #{ticket}\n"
-                    f"Stop Loss shifted to Breakeven (+0.2R): {new_sl:.5f}\n"
-                    f"Position is now 100% risk-free!"
+                self.notifier.notify_tp1_breakeven(
+                    symbol=m['symbol'],
+                    ticket_a="Deal_History_TP1",
+                    ticket_b=ticket,
+                    be_sl=new_sl,
+                    strategy="Live MT5"
                 )
 
         # Clean up closed groups
@@ -1620,15 +1885,41 @@ class MasterUnifiedBot:
             active_tix = [t for t in pos['tickets'] if t in live_tickets]
             if not active_tix:
                 console.print(f"[bold yellow][TRADE CLOSED][/] All split orders for {sym} have exited.")
+                total_pnl = 0.0
+                closed_summary = []
                 if deals:
                     closed_deals = [d for d in deals if d.order in pos['tickets']]
-                    total_pnl = sum(d.profit for d in closed_deals)
+                    total_pnl = sum(d.profit + d.commission + d.swap for d in closed_deals)
+                    for cd in closed_deals:
+                        closed_summary.append({
+                            "label": cd.comment or "Order",
+                            "ticket": cd.ticket,
+                            "pnl": cd.profit + cd.commission + cd.swap
+                        })
                     is_loss = (total_pnl < 0.0)
                     self.risk_guardian.record_trade_result(sym, is_loss=is_loss)
                     if is_loss:
                         self.logger.warning(f"[RISK GUARDIAN] {sym} trade concluded with loss (${total_pnl:.2f}). Consecutive daily losses: {self.risk_guardian.symbol_consecutive_losses.get(sym, 0)}")
                     else:
                         self.logger.info(f"[RISK GUARDIAN] {sym} trade concluded with profit/BE (${total_pnl:.2f}). Consecutive loss counter reset.")
+
+                acc_info = mt5.account_info()
+                bal = acc_info.balance if acc_info else self.risk_guardian.day_start_balance
+                daily_loss = max(0.0, self.risk_guardian.day_start_balance - (acc_info.equity if acc_info else bal))
+                rem_cushion = max(0.0, (self.risk_guardian.day_start_balance * self.risk_guardian.daily_cb_pct) - daily_loss)
+
+                self.notifier.notify_trade_closed(
+                    symbol=sym,
+                    ticket=pos.get('tickets', [0])[0] if pos.get('tickets') else 0,
+                    exit_reason="All Split Orders Closed",
+                    pnl=total_pnl,
+                    day_pnl=bal - self.risk_guardian.day_start_balance,
+                    daily_dd_pct=(daily_loss / self.risk_guardian.day_start_balance * 100.0) if self.risk_guardian.day_start_balance > 0 else 0.0,
+                    remaining_cushion=rem_cushion,
+                    daily_cb_pct=self.risk_guardian.daily_cb_pct * 100.0,
+                    order_breakdown=closed_summary if closed_summary else None,
+                    strategy=pos.get('strategy', 'ApexHunter')
+                )
                 del self.open_positions[sym]
 
     def modify_position_sl(self, ticket: int, broker_sym: str, new_sl: float) -> bool:
@@ -1820,9 +2111,11 @@ class MasterUnifiedBot:
         except KeyboardInterrupt:
             console.print("\n[bold yellow][SHUTDOWN] Bot stopped by user (Ctrl+C). Disconnecting MT5...[/]")
             self.logger.info("Bot execution terminated by user (Ctrl+C).")
+            self.notifier.notify_shutdown(reason="User Stopped (Ctrl+C)")
         except Exception as e:
             self.logger.critical(f"Critical fatal exception in main run loop: {e}", exc_info=True)
             console.print(f"\n[bold red][CRITICAL ERROR][/] {e}")
+            self.notifier.notify_shutdown(reason=f"Critical Error: {e}")
         finally:
             if self.live is not None:
                 self.live.stop()
