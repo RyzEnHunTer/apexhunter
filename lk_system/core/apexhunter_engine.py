@@ -17,7 +17,7 @@ Replicates the verified institutional ApexHunter v1.2.1 TripleGuard logic:
 from dataclasses import dataclass, field
 from datetime import datetime, time, timezone
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
@@ -272,10 +272,12 @@ class DCCEngineV12:
         self,
         prev_bar: pd.Series,
         curr_bar: pd.Series,
-        symbol: Optional[str] = None
-    ) -> Optional[TradeSignalV12]:
+        symbol: Optional[str] = None,
+        return_reason: bool = False
+    ) -> Union[Optional[TradeSignalV12], Tuple[Optional[TradeSignalV12], str]]:
         """
         Evaluates a newly closed 5M bar under DCC v1.2.1 TripleGuard rules.
+        If return_reason=True, returns (TradeSignalV12 or None, diagnostic_reason_str).
         """
         curr_time: datetime = curr_bar.name
         t_hour = curr_time.hour
@@ -284,32 +286,38 @@ class DCCEngineV12:
 
         # 1. Trading Session Hours (06:00 to 19:00 UTC)
         if not (self.session_start_hour <= t_hour < self.session_end_hour):
-            return None
+            reason = f"PAUSED_OFF_SESSION (Hour {t_hour:02d}:00 UTC not in active window {self.session_start_hour:02d}:00-{self.session_end_hour:02d}:00)"
+            return (None, reason) if return_reason else None
 
         # Smart Killzone Filter (Hours 09:00 & 13:00 UTC: skip if stretch < 1.10x)
         stretch_ratio = float(curr_bar['stretch_ratio']) if 'stretch_ratio' in curr_bar and not pd.isna(curr_bar['stretch_ratio']) else 1.0
         if self.dead_trap_hours and t_hour in self.dead_trap_hours:
             if stretch_ratio < 1.10:
-                return None
+                reason = f"PAUSED_KILLZONE (Trap Hour {t_hour:02d}:00 UTC: stretch {stretch_ratio:.2f}x < 1.10x required)"
+                return (None, reason) if return_reason else None
 
         # 2. Calendar Shield: Monday Afternoon Trap Guardrail
         if self.block_monday_pm and t_wday == "Monday" and t_hour in self.monday_pm_blocked_hours:
-            return None
+            reason = f"PAUSED_MONDAY_PM (Monday afternoon blocked hour {t_hour:02d}:00 UTC)"
+            return (None, reason) if return_reason else None
 
         # 3. 1H Bias Confirmation
         bias_1h = curr_bar['bias_1h']
         if pd.isna(bias_1h) or bias_1h == 0:
-            return None
+            reason = "REJECT_BIAS (1H Trend Bias is neutral or undefined)"
+            return (None, reason) if return_reason else None
 
         # 4. 1H ADX Baseline Threshold
         adx_1h = curr_bar['adx_1h']
         if pd.isna(adx_1h) or adx_1h < self.adx_min_threshold:
-            return None
+            reason = f"REJECT_LOW_ADX (1H ADX {adx_1h:.1f} < {self.adx_min_threshold:.1f} minimum baseline)"
+            return (None, reason) if return_reason else None
 
         # 5. 1H ATR Validation
         atr_1h = curr_bar['atr_1h']
         if pd.isna(atr_1h) or atr_1h <= 0:
-            return None
+            reason = "REJECT_INVALID_ATR (1H ATR <= 0 or missing)"
+            return (None, reason) if return_reason else None
 
         close = curr_bar['close']
         vwap = curr_bar['vwap_5m']
@@ -325,15 +333,18 @@ class DCCEngineV12:
         is_bearish_flip = (bias_1h == -1) and (prev_diff >= 0) and (curr_diff < 0)
 
         if not (is_bullish_flip or is_bearish_flip):
-            return None
+            reason = f"REJECT_NO_EMA_FLIP (No 5M EMA9/20 crossover aligning with 1H Bias={bias_1h})"
+            return (None, reason) if return_reason else None
 
         # 7. VWAP & 1H 20 EMA Level Filters
         if is_bullish_flip:
             if close <= vwap or close <= ema20_1h_lvl:
-                return None
+                reason = f"REJECT_LEVEL_FILTER (BUY setup rejected: Close {close:.2f} <= VWAP {vwap:.2f} or 1H EMA20 {ema20_1h_lvl:.2f})"
+                return (None, reason) if return_reason else None
         elif is_bearish_flip:
             if close >= vwap or close >= ema20_1h_lvl:
-                return None
+                reason = f"REJECT_LEVEL_FILTER (SELL setup rejected: Close {close:.2f} >= VWAP {vwap:.2f} or 1H EMA20 {ema20_1h_lvl:.2f})"
+                return (None, reason) if return_reason else None
 
         # 8. TRIPLEGUARD VOLATILITY SHIELDS & QUALITY GATES
         is_low_adx_gate_pass = not (adx_1h < self.low_adx_threshold and stretch_ratio < self.low_adx_min_stretch)
@@ -346,19 +357,23 @@ class DCCEngineV12:
 
         # Check Shield 1: Anti-Chop Floor
         if not shield_checks["anti_chop_floor"]:
-            return None
+            reason = f"REJECT_CHOP_FLOOR (Stretch ratio {stretch_ratio:.2f}x < {self.min_1h_stretch:.2f}x minimum floor)"
+            return (None, reason) if return_reason else None
 
         # Check Shield 2: ADX Exhaustion Ceiling
         if not shield_checks["adx_ceiling"]:
-            return None
+            reason = f"REJECT_ADX_CEILING (1H ADX {adx_1h:.1f} > {self.max_1h_adx:.1f} exhaustion ceiling)"
+            return (None, reason) if return_reason else None
 
         # Check Shield 3: No-Chase Guard
         if not shield_checks["no_chase_guard"]:
-            return None
+            reason = f"REJECT_CHASE_GUARD (5M Chase ratio {chase_ratio:.2f}x > {self.max_5m_chase:.2f}x maximum chase threshold)"
+            return (None, reason) if return_reason else None
 
         # Check Shield 4: Low-ADX Quality Gate (v1.2.1-ApexHunter)
         if not shield_checks["low_adx_quality_gate"]:
-            return None
+            reason = f"REJECT_LOW_ADX_GATE (1H ADX {adx_1h:.1f} < {self.low_adx_threshold} requires stretch >= {self.low_adx_min_stretch:.2f}x, got {stretch_ratio:.2f}x)"
+            return (None, reason) if return_reason else None
 
         # 9. Asymmetric Risk-Reward Calculation
         sl_distance = self.atr_sl_multiplier * atr_1h
@@ -378,7 +393,7 @@ class DCCEngineV12:
             f"Low-ADX Gate: Pass)"
         )
 
-        return TradeSignalV12(
+        signal = TradeSignalV12(
             timestamp=curr_time,
             signal_type=sig_type,
             symbol=sym,
@@ -400,3 +415,4 @@ class DCCEngineV12:
             reason=reason,
             shield_diagnostics=shield_checks
         )
+        return (signal, reason) if return_reason else signal

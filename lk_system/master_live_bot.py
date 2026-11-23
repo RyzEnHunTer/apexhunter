@@ -148,6 +148,7 @@ class MasterUnifiedBot:
         self.acc_mgr = AccountConfigManager()
         self.acc_cfg: Dict[str, Any] = {}
         self.challenge_target_reached: bool = False
+        self._cb_notified_today: bool = False
 
         # Internal position tracking
         self.open_positions: Dict[str, Dict[str, Any]] = {}
@@ -402,6 +403,14 @@ class MasterUnifiedBot:
         # Sync active risk percentage to RiskGuardian
         if self.acc_cfg.get("use_custom_phase_risk", False):
             self.risk_guardian.normal_risk_pct = self.acc_cfg.get("risk_per_trade", 0.010)
+
+        # Sync Circuit Breakers from persistent account rules
+        if "daily_cb_pct" in self.acc_cfg:
+            cb_val = float(self.acc_cfg["daily_cb_pct"])
+            self.risk_guardian.daily_cb_pct = cb_val / 100.0 if cb_val > 0.50 else cb_val
+        if "max_total_dd_pct" in self.acc_cfg:
+            floor_val = float(self.acc_cfg["max_total_dd_pct"])
+            self.risk_guardian.hard_floor_pct = floor_val / 100.0 if floor_val > 0.50 else floor_val
 
         # Sync active notification credentials to TradeNotifier
         if "notifications" in self.acc_cfg:
@@ -783,6 +792,12 @@ class MasterUnifiedBot:
                 self.challenge_target_reached = True
             if self.acc_cfg.get("use_custom_phase_risk", False):
                 self.risk_guardian.normal_risk_pct = self.acc_cfg.get("risk_per_trade", 0.010)
+            if "daily_cb_pct" in self.acc_cfg:
+                cb_val = float(self.acc_cfg["daily_cb_pct"])
+                self.risk_guardian.daily_cb_pct = cb_val / 100.0 if cb_val > 0.50 else cb_val
+            if "max_total_dd_pct" in self.acc_cfg:
+                floor_val = float(self.acc_cfg["max_total_dd_pct"])
+                self.risk_guardian.hard_floor_pct = floor_val / 100.0 if floor_val > 0.50 else floor_val
 
         lifecycle = self.acc_cfg.get("account_lifecycle", "challenge").upper()
         curr_phase = self.acc_cfg.get("current_phase", 1)
@@ -875,6 +890,7 @@ class MasterUnifiedBot:
             # 1. Update High-Water Mark peak equity & Daily Anchor at 00:00 UTC
             self.acc_mgr.update_high_water_mark(str(acc.login), current_equity)
             if self.risk_guardian.reset_daily_if_new_day(now_utc, current_balance):
+                self._cb_notified_today = False
                 console.print(f"\n[bold bright_green][DAILY ROLLOVER][/] 00:00 UTC Rollover Anchor Updated: Starting Balance = ${current_balance:,.2f}")
                 self.logger.info(f"00:00 UTC Daily Rollover Anchor Updated: Starting Balance = ${current_balance:,.2f}")
 
@@ -905,10 +921,15 @@ class MasterUnifiedBot:
             # 3. Check Emergency Circuit Breakers
             allowed, reason = self.risk_guardian.is_trading_allowed(current_balance, current_equity)
             if not allowed:
-                if not self.risk_guardian.daily_halt_active and "Daily" in reason:
+                if not getattr(self, "_cb_notified_today", False):
+                    self._cb_notified_today = True
                     console.print(f"\n[bold red][CRITICAL HALT][/] {reason}")
-                    self.logger.critical(f"Daily Circuit Breaker Triggered: {reason}")
-                    self.notifier.send_message(f"🛑 <b>DAILY CIRCUIT BREAKER TRIGGERED!</b>\n{reason}\nTrading halted until 00:00 UTC.")
+                    self.logger.critical(f"Circuit Breaker Triggered: {reason}")
+                    self.notifier.send_message(f"🛑 <b>CIRCUIT BREAKER TRIGGERED!</b>\n{reason}\nTrading halted.")
+                    if self.risk_guardian.hard_floor_breached:
+                        self.logger.critical(f"Hard Floor Breached! Emergency closing all positions: {reason}")
+                        self.emergency_close_all(reason=f"Hard Floor Breached: {reason}")
+                self.manage_active_positions()
                 return
 
             # 4. News Auto-Close Check (10 Minutes Before High-Impact News)
@@ -1051,8 +1072,9 @@ class MasterUnifiedBot:
             "planned_lots": 0.0
         }
 
-        sig = engine.evaluate_bar(prev_bar, curr_bar, symbol=canonical)
+        sig, reject_reason = engine.evaluate_bar(prev_bar, curr_bar, symbol=canonical, return_reason=True)
         if sig is None:
+            audit_record["reason"] = reject_reason
             self.audit_logger.log_candle(audit_record)
             return
 
@@ -1693,6 +1715,12 @@ class MasterUnifiedBot:
                         }
                         res = mt5.order_send(req)
                         self.logger.trade(f"[MT5 CLOSE] Ticket #{p.ticket} on {p.symbol} closed at {price} (RetCode={res.retcode if res else 'None'})")
+
+    def emergency_close_all(self, reason: str = "Emergency Circuit Breaker Close"):
+        """Emergency closes all open positions across all symbols immediately."""
+        self.logger.critical(f"[EMERGENCY CLOSE ALL] Triggered: {reason}")
+        for sym in list(self.open_positions.keys()):
+            self.close_position_by_symbol(sym, reason=reason)
 
     def display_live_dashboard(self, acc: Any, now_utc: datetime, target_info: Optional[Dict[str, Any]] = None):
         """Renders institutional live status telemetry to terminal using Rich."""
