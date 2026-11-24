@@ -1,16 +1,16 @@
-import os
+"""
+ApexHunter 2.0 — Quick Launcher
+===============================
+Redirects to run_apexhunter_2.py.
+"""
 import sys
+import os
 
-print("========================================")
-print("  STARTING LIVE BOT CONNECTION TO MT5")
-print("========================================\n")
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-try:
-    # We just run the live_bot module
-    import lk_system.live.live_bot
-except KeyboardInterrupt:
-    print("\nBot stopped by user.")
-except Exception as e:
-    print(f"\n[CRITICAL ERROR]: {e}")
-finally:
-    input("\nPress Enter to exit...")
+import run_apexhunter_2
+
+if __name__ == "__main__":
+    run_apexhunter_2.main()
