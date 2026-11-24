@@ -51,6 +51,8 @@ from core.order_manager import OrderManager
 from core.account_config_manager import AccountConfigManager
 from core.apexhunter_engine import DCCEngineV12, SignalType
 from core.audit_logger import MarketAuditLogger, EngineLogger, LiveStateExporter
+from core.asset_handler import AssetHandler
+from core.persistence_manager import BotPersistenceManager
 from live.notifier import TradeNotifier
 from core.ui_renderer import (
     console,
@@ -137,6 +139,13 @@ class MasterUnifiedBot:
 
         # 6. Remote Notifier
         self.notifier = TradeNotifier(config_path=config_path)
+
+        # 6b. Bot Persistence & Crash Recovery Manager
+        state_name = "bot_runtime_state_dryrun.json" if self.dry_run else "bot_runtime_state.json"
+        self.persistence_manager = BotPersistenceManager(
+            state_file_path=os.path.join(PROJECT_ROOT, "logs", state_name)
+        )
+        self.asset_handler = getattr(self.bridge, 'asset_handler', None)
 
         # 7. ApexHunter 1.2.1 Engines for Gold & Nasdaq (Simultaneous Parallel Execution)
         self.apex_engines = {
@@ -1037,29 +1046,30 @@ class MasterUnifiedBot:
         console.print(f"  Max Concurrent Slots:    {self.max_concurrent_trades}")
         console.print("=" * 85)
 
-        # Crash recovery for live trading
-        if not self.dry_run:
-            live_pos = mt5.positions_get()
-            if live_pos:
-                rec_count = self.order_manager.recover_from_mt5(live_pos)
-                if rec_count > 0:
-                    console.print(f"[bold bright_green]  [CRASH RECOVERY] Successfully recovered {rec_count} active position groups from MT5![/]")
-                    for grp_id, grp in self.order_manager.active_groups.items():
-                        canon = grp['symbol']
-                        self.open_positions[canon] = {
-                            'group_id': grp_id,
-                            'strategy': grp['strategy'],
-                            'symbol': canon,
-                            'broker_sym': self.bridge.resolved_symbols.get(canon, canon),
-                            'direction': 'ACTIVE',
-                            'entry_price': grp['entry_price'],
-                            'sl': grp['initial_sl'],
-                            'be_sl': grp['be_sl'],
-                            'splits': [],
-                            'tickets': grp['tickets'],
-                            'tp1_hit': False,
-                            'entry_time': datetime.now(timezone.utc)
-                        }
+        # Crash recovery & state reconciliation
+        live_pos = mt5.positions_get() if (not self.dry_run and mt5 is not None) else []
+        rec_result = self.persistence_manager.recover_state(
+            live_positions=list(live_pos) if live_pos else [],
+            order_manager=self.order_manager,
+            risk_guardian=self.risk_guardian,
+            asset_handler=self.asset_handler
+        )
+        rec_count = rec_result["recovered_count"]
+        self.open_positions = rec_result["open_positions"]
+
+        if rec_count > 0 or rec_result["risk_restored"]:
+            console.print(
+                f"[bold bright_green]  [CRASH RECOVERY] Successfully recovered {rec_count} active position groups "
+                f"from MT5 (Risk Restored: {rec_result['risk_restored']})![/]"
+            )
+            self.notifier.notify_recovery(
+                recovered_count=rec_count,
+                recovered_positions=list(self.open_positions.values()),
+                risk_restored=rec_result["risk_restored"],
+                day_start_balance=self.risk_guardian.day_start_balance,
+                account_id=acc.login if acc else None,
+                server=acc.server if acc else None
+            )
 
         self.notifier.notify_startup(
             account_id=acc.login,
@@ -1112,6 +1122,7 @@ class MasterUnifiedBot:
             self.acc_mgr.update_high_water_mark(str(acc.login), current_equity)
             if self.risk_guardian.reset_daily_if_new_day(now_utc, current_balance):
                 self._cb_notified_today = False
+                self._sync_risk_persistence()
                 console.print(f"\n[bold bright_green][DAILY ROLLOVER][/] 00:00 UTC Rollover Anchor Updated: Starting Balance = ${current_balance:,.2f}")
                 self.logger.info(f"00:00 UTC Daily Rollover Anchor Updated: Starting Balance = ${current_balance:,.2f}")
 
@@ -1630,6 +1641,22 @@ class MasterUnifiedBot:
             risk_usd=risk_usd
         )
 
+    def _sync_risk_persistence(self):
+        """Persists current day risk state to disk atomically."""
+        try:
+            if hasattr(self, 'risk_guardian'):
+                cur_date = getattr(self.risk_guardian, 'current_utc_date', None)
+                date_str = cur_date.strftime("%Y-%m-%d") if cur_date else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                self.persistence_manager.save_daily_risk(
+                    date_str=date_str,
+                    day_start_balance=self.risk_guardian.day_start_balance,
+                    daily_halt_active=self.risk_guardian.daily_halt_active,
+                    symbol_consecutive_losses=self.risk_guardian.symbol_consecutive_losses,
+                    symbol_daily_halted=self.risk_guardian.symbol_daily_halted
+                )
+        except Exception as e:
+            self.logger.warning(f"[PersistenceManager] Failed to sync risk state: {e}")
+
     def execute_order(
         self,
         strategy: str,
@@ -1704,9 +1731,11 @@ class MasterUnifiedBot:
                 'active_splits': splits[1:],
                 'tickets': tickets,
                 'tp1_hit': False,
-                'entry_time': datetime.now(timezone.utc)
+                'entry_time': datetime.now(timezone.utc).isoformat()
             }
             self.order_manager.register_position_group(group_id, strategy, symbol, entry_price, stop_loss, be_sl, tickets)
+            self.persistence_manager.save_position(group_id, self.open_positions[symbol])
+            self._sync_risk_persistence()
             q = self.bridge.get_latest_quote(symbol)
             self.notifier.notify_trade_opened(
                 symbol=symbol,
@@ -1763,9 +1792,11 @@ class MasterUnifiedBot:
                 'splits': splits,
                 'tickets': tickets,
                 'tp1_hit': False,
-                'entry_time': datetime.now(timezone.utc)
+                'entry_time': datetime.now(timezone.utc).isoformat()
             }
             self.order_manager.register_position_group(group_id, strategy, symbol, live_entry_p, stop_loss, be_sl, tickets)
+            self.persistence_manager.save_position(group_id, self.open_positions[symbol])
+            self._sync_risk_persistence()
             q = self.bridge.get_latest_quote(symbol)
             self.notifier.notify_trade_opened(
                 symbol=symbol,
@@ -1831,7 +1862,10 @@ class MasterUnifiedBot:
                             daily_cb_pct=self.risk_guardian.daily_cb_pct * 100.0,
                             strategy=pos.get('strategy', 'ApexHunter')
                         )
+                    if 'group_id' in pos:
+                        self.persistence_manager.remove_position(pos['group_id'])
                     del self.open_positions[sym]
+                    self._sync_risk_persistence()
                     continue
 
                 # 2. Check TP1 Hit
@@ -1842,6 +1876,8 @@ class MasterUnifiedBot:
                         pos['tp1_hit'] = True
                         pos['sl'] = pos['be_sl'] # Move active SL to Breakeven
                         pos['active_splits'] = pos['splits'][1:]
+                        if 'group_id' in pos:
+                            self.persistence_manager.update_position_tp1(pos['group_id'], pos['be_sl'])
                         sibling_tix = pos['tickets'][1:] if len(pos['tickets']) > 1 else pos['tickets']
                         console.print(f"\n[bold bright_green][TARGET HIT][/] {sym} Order 1 hit TP1! Sibling orders moved to Breakeven ({pos['be_sl']:.5f}).")
                         self.notifier.notify_tp1_breakeven(
@@ -1880,7 +1916,10 @@ class MasterUnifiedBot:
                             daily_cb_pct=self.risk_guardian.daily_cb_pct * 100.0,
                             strategy=pos.get('strategy', 'ApexHunter')
                         )
+                        if 'group_id' in pos:
+                            self.persistence_manager.remove_position(pos['group_id'])
                         del self.open_positions[sym]
+                        self._sync_risk_persistence()
             return
 
         # Real Live MT5 Position Management
@@ -1900,6 +1939,11 @@ class MasterUnifiedBot:
             if success:
                 self.order_manager.record_ticket_modified(m['group_id'], ticket)
                 grp = self.order_manager.active_groups.get(m['group_id'])
+                canon = m['symbol']
+                if canon in self.open_positions:
+                    self.open_positions[canon]['tp1_hit'] = True
+                    self.open_positions[canon]['sl'] = new_sl
+                self.persistence_manager.update_position_tp1(m['group_id'], new_sl)
                 t_1 = grp['tickets'][0] if grp and grp.get('tickets') else "TP1"
                 self.notifier.notify_tp1_breakeven(
                     symbol=m['symbol'],
@@ -1949,7 +1993,10 @@ class MasterUnifiedBot:
                     order_breakdown=closed_summary if closed_summary else None,
                     strategy=pos.get('strategy', 'ApexHunter')
                 )
+                if 'group_id' in pos:
+                    self.persistence_manager.remove_position(pos['group_id'])
                 del self.open_positions[sym]
+                self._sync_risk_persistence()
 
     def modify_position_sl(self, ticket: int, broker_sym: str, new_sl: float) -> bool:
         """Modifies MT5 position Stop Loss while preserving its original Take Profit."""
@@ -2013,7 +2060,11 @@ class MasterUnifiedBot:
         """Liquidates all positions for a specific symbol."""
         self.logger.trade(f"[LIQUIDATE POSITION] Liquidating all positions on {symbol} - Reason: {reason}")
         if symbol in self.open_positions:
+            pos = self.open_positions[symbol]
+            if 'group_id' in pos:
+                self.persistence_manager.remove_position(pos['group_id'])
             del self.open_positions[symbol]
+            self._sync_risk_persistence()
 
         if not self.dry_run:
             positions = mt5.positions_get()

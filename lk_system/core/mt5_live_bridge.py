@@ -24,6 +24,8 @@ import pandas as pd
 import numpy as np
 import MetaTrader5 as mt5
 
+from core.asset_handler import AssetHandler
+
 class MT5LiveBridge:
     """
     Industrial-grade MT5 Live Data Bridge for algorithmic trading.
@@ -44,6 +46,7 @@ class MT5LiveBridge:
             'XAUUSD', 'NAS100'
         ]
         self.default_broker_offset_hours = broker_offset_hours
+        self.asset_handler = AssetHandler(canonical_targets=self.raw_targets)
         self.resolved_symbols: Dict[str, str] = {} # canonical -> broker symbol
         self.broker_offset: timedelta = timedelta(hours=broker_offset_hours)
         self.is_connected: bool = False
@@ -78,65 +81,22 @@ class MT5LiveBridge:
             mt5.shutdown()
             self.is_connected = False
 
-    CANONICAL_ALIASES: Dict[str, List[str]] = {
-        'XAUUSD': [
-            'XAUUSD', 'GOLD', 'XAUUSD.m', 'XAUUSD.pro', 'XAUUSD.raw', 'XAUUSD.ecn',
-            'XAUUSD+', 'XAUUSD_i', 'XAUUSD.c', 'XAUUSD.a', 'XAUUSD.s', 'XAUUSD.std',
-            'XAUUSD_sb', 'GOLD.pro', 'GOLD.m', 'GOLD.raw', 'GOLDcash', 'XAU/USD'
-        ],
-        'NAS100': [
-            'NAS100', 'USTEC', 'US100', 'NDX', 'NQ', 'NAS100.cash', 'USTEC.cash',
-            'US100.cash', 'NDX100', 'NAS100m', 'NAS100.m', 'NAS100.pro', 'NAS100.raw',
-            'NAS100.ecn', 'NAS100+', 'USTEC.m', 'USTEC.pro', 'USTEC.raw', 'US100.m',
-            'NQ100', 'USA100', 'USATECH', 'US-TECH100', 'NAS100Cash', 'USTECCash'
-        ],
-        'EURUSD': ['EURUSD', 'EURUSD.m', 'EURUSD.raw', 'EURUSD.pro', 'EURUSD+', 'EURUSD_i', 'EURUSD.ecn', 'EUR/USD'],
-        'GBPUSD': ['GBPUSD', 'GBPUSD.m', 'GBPUSD.raw', 'GBPUSD.pro', 'GBPUSD+', 'GBPUSD_i', 'GBPUSD.ecn', 'GBP/USD'],
-        'USDJPY': ['USDJPY', 'USDJPY.m', 'USDJPY.raw', 'USDJPY.pro', 'USDJPY+', 'USDJPY_i', 'USDJPY.ecn', 'USD/JPY'],
-        'AUDUSD': ['AUDUSD', 'AUDUSD.m', 'AUDUSD.raw', 'AUDUSD.pro', 'AUDUSD+', 'AUDUSD_i', 'AUDUSD.ecn', 'AUD/USD'],
-        'EURJPY': ['EURJPY', 'EURJPY.m', 'EURJPY.raw', 'EURJPY.pro', 'EURJPY+', 'EURJPY_i', 'EURJPY.ecn', 'EUR/JPY'],
-        'USDCAD': ['USDCAD', 'USDCAD.m', 'USDCAD.raw', 'USDCAD.pro', 'USDCAD+', 'USDCAD_i', 'USDCAD.ecn', 'USD/CAD'],
-    }
-
     def _resolve_symbols(self):
-        """Resolves canonical symbol names to exact broker symbols."""
-        all_broker_symbols = [s.name for s in mt5.symbols_get() or []]
-        self.resolved_symbols = {}
-
-        for target in self.raw_targets:
-            # 1. Exact match
-            if target in all_broker_symbols:
-                self.resolved_symbols[target] = target
-                mt5.symbol_select(target, True)
-                continue
-
-            # 2. Check canonical alias list
-            matched = None
-            aliases = self.CANONICAL_ALIASES.get(target, [target])
-            for alias in aliases:
-                if alias in all_broker_symbols:
-                    matched = alias
-                    break
-
-            # 3. Check suffix starts-with match
-            if not matched:
-                for s in all_broker_symbols:
-                    if s.startswith(target) and len(s) <= len(target) + 5:
-                        matched = s
-                        break
-
-            # 4. Case-insensitive substring match
-            if not matched:
-                for s in all_broker_symbols:
-                    if target.lower() in s.lower() and len(s) <= len(target) + 6:
-                        matched = s
-                        break
-
-            if matched:
-                self.resolved_symbols[target] = matched
-                mt5.symbol_select(matched, True)
-            else:
-                print(f"[MT5Bridge WARN] Could not resolve broker symbol for: {target}")
+        """Resolves canonical symbol names to exact broker symbols using AssetHandler."""
+        match_results = self.asset_handler.resolve_all_symbols()
+        self.resolved_symbols = {
+            canon: res.broker_symbol
+            for canon, res in match_results.items()
+            if res.status == "ACTIVE" and res.broker_symbol
+        }
+        for canon, broker_sym in self.resolved_symbols.items():
+            try:
+                mt5.symbol_select(broker_sym, True)
+            except Exception:
+                pass
+        for canon in self.raw_targets:
+            if canon not in self.resolved_symbols:
+                print(f"[MT5Bridge WARN] Asset '{canon}' not available on broker -> DISABLED_BY_BROKER")
 
     def _sync_broker_timezone(self):
         """

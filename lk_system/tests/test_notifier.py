@@ -237,6 +237,23 @@ class TestNotifier(unittest.TestCase):
         notifier.notify_challenge_passed("1234567", 2, 5.0, 5680.0, 260.0, 5.20, is_final=True)
         notifier.notify_phase_transition("1234567", "Phase 2", 5420.0, 5.0, 1.0, is_custom_risk_on=False)
 
+        # 15. notify_recovery
+        notifier.notify_recovery(
+            recovered_count=1,
+            recovered_positions=[{
+                "symbol": "XAUUSD",
+                "direction": "BUY",
+                "entry_price": 2650.0,
+                "sl": 2652.0,
+                "tp1_hit": True,
+                "tickets": [101, 102]
+            }],
+            risk_restored=True,
+            day_start_balance=5100.0,
+            account_id=1234567,
+            server="MetaQuotes-Demo"
+        )
+
         # Wait for queue worker to process items
         time.sleep(0.6)
 

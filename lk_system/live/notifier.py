@@ -1105,6 +1105,72 @@ class TradeNotifier:
         }
         self._enqueue({"text": tg_text, "content": "", "embed": discord_embed})
 
+    def notify_recovery(
+        self,
+        recovered_count: int,
+        recovered_positions: List[Dict[str, Any]],
+        risk_restored: bool = False,
+        day_start_balance: Optional[float] = None,
+        account_id: Optional[int] = None,
+        server: Optional[str] = None
+    ):
+        """Notifies when the bot restarts and auto-recovers active trades and risk state."""
+        now_str = format_dual_time(include_date=True)
+        acc_str = f"{account_id} ({server})" if account_id else "MT5 Terminal"
+        risk_str = (
+            f"Yes (00:00 UTC Day Start: ${day_start_balance:,.2f})"
+            if risk_restored and day_start_balance is not None
+            else ("Yes (Anchor Restored)" if risk_restored else "No (Fresh Day / Reset)")
+        )
+
+        pos_lines_tg = []
+        discord_fields = [
+            {"name": "Account", "value": f"`{acc_str}`", "inline": True},
+            {"name": "Recovered Positions", "value": f"**{recovered_count}** active groups", "inline": True},
+            {"name": "Risk Anchor Restored", "value": f"`{risk_str}`", "inline": False},
+        ]
+
+        for p in recovered_positions:
+            sym = p.get("symbol", "UNKNOWN")
+            direction = p.get("direction", "BUY")
+            entry_p = p.get("entry_price", 0.0)
+            sl = p.get("sl", 0.0)
+            tp1_hit = p.get("tp1_hit", False)
+            tickets = p.get("tickets", [])
+            status_tag = "RUNNER (TP1 Closed / BE Active)" if tp1_hit else "ALL SPLITS OPEN"
+            pos_lines_tg.append(
+                f"• <b>{sym} {direction}</b> | Entry: <code>{entry_p}</code> | SL: <code>{sl}</code> | {status_tag} | Tickets: <code>{tickets}</code>"
+            )
+            discord_fields.append({
+                "name": f"📍 {sym} ({direction})",
+                "value": f"**Entry:** `{entry_p}` | **SL:** `{sl}`\n**Status:** {status_tag}\n**Tickets:** `{tickets}`",
+                "inline": False
+            })
+
+        pos_details_tg = "\n".join(pos_lines_tg) if pos_lines_tg else "• <i>No open trades active at restart.</i>"
+
+        tg_text = (
+            f"🔄 <b>CRASH RECOVERY & STATE RESTORATION</b> 🔄\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• <b>Account:</b> <code>{acc_str}</code>\n"
+            f"• <b>Active Positions Recovered:</b> <b>{recovered_count}</b>\n"
+            f"• <b>Risk Anchor Restored:</b> <b>{risk_str}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"<b>Active Reconciled Trades:</b>\n"
+            f"{pos_details_tg}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"⏰ <i>Auto-recovered at {now_str}</i>"
+        )
+
+        discord_embed = {
+            "title": "🔄 BOT RESTART & CRASH RECOVERY COMPLETED 🔄",
+            "description": "Bot restarted and successfully reconciled state with live MetaTrader 5 terminal.",
+            "color": 0x00D084 if recovered_count > 0 else 0x3498DB,
+            "fields": discord_fields,
+            "footer": {"text": f"Reconciled at {now_str}"}
+        }
+        self._enqueue({"text": tg_text, "content": "", "embed": discord_embed})
+
 
 # Compatibility alias
 NotificationManager = TradeNotifier
