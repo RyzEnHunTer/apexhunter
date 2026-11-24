@@ -817,6 +817,33 @@ class TradeNotifier:
 
         self._enqueue({"text": tg_text, "content": "", "embed": discord_embed})
 
+    def notify_nightly_audit(
+        self,
+        title: str,
+        summary_text: str,
+        discord_fields: Optional[List[Dict[str, Any]]] = None,
+        markdown_report: Optional[str] = None
+    ):
+        """Broadcasts nightly reconciliation scorecard comparing backtest setups vs live broker execution."""
+        now_str = format_dual_time(include_date=True)
+        clean_desc = (
+            summary_text
+            .replace("<b>", "**").replace("</b>", "**")
+            .replace("<code>", "`").replace("</code>", "`")
+            .replace("<i>", "*").replace("</i>", "*")
+        )
+
+        discord_embed = {
+            "title": title,
+            "description": clean_desc[:2048],
+            "color": 0x2ECC71,
+            "fields": discord_fields or [],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "footer": {"text": f"Master Unified Nightly Reconciler • {now_str}"}
+        }
+
+        self._enqueue({"text": summary_text, "content": "", "embed": discord_embed})
+
     def notify_circuit_breaker(
         self,
         cb_type: str,

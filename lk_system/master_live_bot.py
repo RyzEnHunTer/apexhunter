@@ -371,6 +371,19 @@ class MasterUnifiedBot:
                 closed_trades_details=closed_deals
             )
             self.logger.info(f"[DAILY SCORECARD DISPATCHED] Date: {audit_date}, Realized PnL: ${day_pnl:,.2f} ({day_pnl_pct:+.2f}%), Trades: {len(closed_deals)}")
+
+            # Automated Nightly Forensic Reconciliation ("Night Rec")
+            try:
+                from backtest.nightly_reconciler import NightlyReconciler
+                reconciler = NightlyReconciler(
+                    symbols=list(self.bridge.target_symbols),
+                    config_path=os.path.join(PROJECT_ROOT, "live", "config.json"),
+                    notifier=self.notifier
+                )
+                reconciler.run(audit_date)
+                self.logger.info(f"[NIGHTLY RECONCILER COMPLETED] Forensic scorecard generated for {audit_date}.")
+            except Exception as rec_err:
+                self.logger.warning(f"[NIGHTLY RECONCILER WARN] Reconciler execution failed: {rec_err}")
         except Exception as e:
             self.logger.error(f"[DAILY SCORECARD ERROR] Failed to dispatch daily summary: {e}")
 
