@@ -81,6 +81,40 @@ class MT5LiveBridge:
             mt5.shutdown()
             self.is_connected = False
 
+    def ensure_connected(self) -> bool:
+        """
+        Watchdog: Verifies active MT5 IPC connection and auto-reconnects if terminal dropped.
+        Prevents live loops from hanging or stalling during network blips or MT5 restarts.
+        """
+        if mt5 is None:
+            return False
+        try:
+            terminal = mt5.terminal_info()
+            if terminal is not None and getattr(terminal, 'connected', True):
+                self.is_connected = True
+                return True
+        except Exception:
+            pass
+
+        # Connection dropped or terminal restarted -> Attempt re-initialization
+        try:
+            if mt5.initialize():
+                acc = mt5.account_info()
+                term = mt5.terminal_info()
+                if acc and term:
+                    self.is_connected = True
+                    for b_sym in self.resolved_symbols.values():
+                        try:
+                            mt5.symbol_select(b_sym, True)
+                        except Exception:
+                            pass
+                    return True
+        except Exception:
+            pass
+
+        self.is_connected = False
+        return False
+
     def _resolve_symbols(self):
         """Resolves canonical symbol names to exact broker symbols using AssetHandler."""
         match_results = self.asset_handler.resolve_all_symbols()
@@ -162,6 +196,8 @@ class MT5LiveBridge:
         """Fetches the latest live Bid, Ask, Spread, and Tick Value."""
         broker_sym = self.resolved_symbols.get(symbol, symbol)
         info = mt5.symbol_info(broker_sym)
+        if not info and self.ensure_connected():
+            info = mt5.symbol_info(broker_sym)
         if not info:
             return None
         return {
@@ -186,17 +222,20 @@ class MT5LiveBridge:
             raise ValueError(f"Unsupported timeframe: {timeframe_str}")
 
         rates = mt5.copy_rates_from_pos(broker_sym, tf_const, 0, count)
+        if (rates is None or len(rates) == 0) and self.ensure_connected():
+            rates = mt5.copy_rates_from_pos(broker_sym, tf_const, 0, count)
+
         if rates is None or len(rates) == 0:
             return None
 
         df = pd.DataFrame(rates)
         # Convert timestamp to UTC using broker offset
         df['time'] = pd.to_datetime(df['time'], unit='s', utc=True) - self.broker_offset
-        df.set_index('time', inplace=True)
+        df = df.set_index('time')
         
         # Standardize volume column name
         if 'tick_volume' in df.columns:
-            df.rename(columns={'tick_volume': 'volume'}, inplace=True)
+            df = df.rename(columns={'tick_volume': 'volume'})
             
         return df[['open', 'high', 'low', 'close', 'volume']]
 

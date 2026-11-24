@@ -1111,6 +1111,8 @@ class MasterUnifiedBot:
         try:
             now_utc = datetime.now(timezone.utc)
             acc = mt5.account_info()
+            if not acc and self.bridge.ensure_connected():
+                acc = mt5.account_info()
             if not acc:
                 return
 
@@ -1409,6 +1411,14 @@ class MasterUnifiedBot:
 
         # 4. Risk Guardian Circuit Breaker & Consecutive Loss Check (ApexHunter)
         acc = mt5.account_info()
+        if not acc and self.bridge.ensure_connected():
+            acc = mt5.account_info()
+        if not acc:
+            audit_record["decision"] = "BLOCKED_DISCONNECTED"
+            audit_record["reason"] = "MT5 terminal disconnected while fetching account info"
+            self.audit_logger.log_candle(audit_record)
+            return
+
         allowed, risk_reason = self.risk_guardian.is_symbol_trading_allowed(canonical, acc.balance, acc.equity)
         if not allowed:
             audit_record["decision"] = "BLOCKED_CIRCUIT_BREAKER"
@@ -1613,14 +1623,22 @@ class MasterUnifiedBot:
             self.audit_logger.log_candle(audit_record)
             return
 
-        # 4. Risk Guardian Circuit Breaker & Consecutive Loss Check (ApexHunter)
+        # 4. Risk Guardian Circuit Breaker & Consecutive Loss Check (Lewis Kelly)
         acc = mt5.account_info()
+        if not acc and self.bridge.ensure_connected():
+            acc = mt5.account_info()
+        if not acc:
+            audit_record["decision"] = "BLOCKED_DISCONNECTED"
+            audit_record["reason"] = "MT5 terminal disconnected while fetching account info"
+            self.audit_logger.log_candle(audit_record)
+            return
+
         allowed, risk_reason = self.risk_guardian.is_symbol_trading_allowed(canonical, acc.balance, acc.equity)
         if not allowed:
             audit_record["decision"] = "BLOCKED_CIRCUIT_BREAKER"
             audit_record["reason"] = risk_reason
             self.audit_logger.log_candle(audit_record)
-            self.logger.warning(f"ApexHunter {canonical} entry blocked by Risk Guardian: {risk_reason}")
+            self.logger.warning(f"Lewis Kelly {canonical} entry blocked by Risk Guardian: {risk_reason}")
             return
 
         risk_usd = self.risk_guardian.calculate_fitted_risk_usd(acc.balance, acc.equity)
