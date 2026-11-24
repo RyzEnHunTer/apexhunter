@@ -288,6 +288,13 @@ class MasterUnifiedBot:
                     session_name="Pre-New York Window",
                     details="Midday trap period concluded. Active market surveillance and trade execution restored."
                 )
+            else:
+                console.print("\n[bold bright_green][TRADING RESUMED: LONDON ACTIVE SESSION][/]")
+                self.notifier.notify_trading_resumed(
+                    zone_title="London Session Active",
+                    session_name="European / London Window",
+                    details="Active market surveillance and breakout scanning restored."
+                )
         elif new_state == "ACTIVE_NY":
             if prev_state == "ACTIVE_LONDON":
                 console.print("\n[bold bright_blue][SESSION UPDATE: NEW YORK SESSION OPEN (12:00 UTC / 17:30 IST)][/]")
@@ -301,6 +308,13 @@ class MasterUnifiedBot:
                     zone_title="US Dead Trap Hour Ended (14:00 UTC / 19:30 IST)",
                     session_name="New York Active Trading Session",
                     details="US pre-market transition ended. Active market surveillance restored."
+                )
+            else:
+                console.print("\n[bold bright_green][TRADING RESUMED: NEW YORK ACTIVE SESSION][/]")
+                self.notifier.notify_trading_resumed(
+                    zone_title="New York Active Trading Session (12:00-19:00 UTC)",
+                    session_name="New York Window Active",
+                    details="Active market surveillance and breakout scanning restored."
                 )
 
     def _run_daily_summary(self, audit_date: Any):
@@ -1872,12 +1886,14 @@ class MasterUnifiedBot:
             success = self.modify_position_sl(ticket, broker_sym, new_sl)
             if success:
                 self.order_manager.record_ticket_modified(m['group_id'], ticket)
+                grp = self.order_manager.active_groups.get(m['group_id'])
+                t_1 = grp['tickets'][0] if grp and grp.get('tickets') else "TP1"
                 self.notifier.notify_tp1_breakeven(
                     symbol=m['symbol'],
-                    ticket_a="Deal_History_TP1",
+                    ticket_a=t_1,
                     ticket_b=ticket,
                     be_sl=new_sl,
-                    strategy="Live MT5"
+                    strategy=grp.get('strategy', 'Live MT5') if grp else "Live MT5"
                 )
 
         # Clean up closed groups
