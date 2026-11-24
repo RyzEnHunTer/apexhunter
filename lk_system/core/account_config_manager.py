@@ -325,6 +325,62 @@ class AccountConfigManager:
         self.save()
         return cfg["use_custom_phase_risk"]
 
+    def update_drawdown_and_cb_limits(
+        self,
+        acc_id: str,
+        daily_cb_pct: Optional[float] = None,
+        daily_dd_limit_pct: Optional[float] = None,
+        max_cb_pct: Optional[float] = None,
+        max_total_dd_pct: Optional[float] = None
+    ) -> bool:
+        """
+        Updates and persists Daily and Max Drawdown limits / Circuit Breakers.
+        Values can be provided either in percent form (e.g. 4.0 for 4%) or decimal (e.g. 0.04).
+        Stored in percent form (e.g. 4.0) to match existing bot_accounts_config.json convention.
+        """
+        if acc_id not in self.accounts:
+            return False
+
+        cfg = self.accounts[acc_id]
+        if daily_cb_pct is not None:
+            val = float(daily_cb_pct)
+            cfg["daily_cb_pct"] = round(val * 100.0 if val <= 0.50 else val, 2)
+        if daily_dd_limit_pct is not None:
+            val = float(daily_dd_limit_pct)
+            cfg["daily_dd_limit_pct"] = round(val * 100.0 if val <= 0.50 else val, 2)
+        if max_cb_pct is not None:
+            val = float(max_cb_pct)
+            cfg["max_cb_pct"] = round(val * 100.0 if val <= 0.50 else val, 2)
+        if max_total_dd_pct is not None:
+            val = float(max_total_dd_pct)
+            cfg["max_total_dd_pct"] = round(val * 100.0 if val <= 0.50 else val, 2)
+
+        cfg["last_updated"] = datetime.now(timezone.utc).isoformat()
+        self.save()
+        return True
+
+    def update_risk_per_trade(
+        self,
+        acc_id: str,
+        risk_pct: float
+    ) -> bool:
+        """
+        Updates and persists active risk per trade across challenge and funded lifecycle.
+        Values can be provided either in percent form (e.g. 1.0 for 1%) or decimal (e.g. 0.01).
+        """
+        if acc_id not in self.accounts:
+            return False
+
+        cfg = self.accounts[acc_id]
+        val = float(risk_pct)
+        pct = val * 100.0 if val <= 0.50 else val
+        cfg["challenge_risk_pct"] = round(pct, 2)
+        cfg["funded_risk_pct"] = round(pct, 2)
+        cfg["risk_per_trade"] = round(pct / 100.0, 4)
+        cfg["last_updated"] = datetime.now(timezone.utc).isoformat()
+        self.save()
+        return True
+
     def update_high_water_mark(self, acc_id: str, equity: float) -> float:
         """Updates and persists the peak equity high-water mark."""
         if acc_id not in self.accounts:

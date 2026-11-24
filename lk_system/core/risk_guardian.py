@@ -74,6 +74,35 @@ class RiskGuardian:
             return True
         return False
 
+    def update_parameters(
+        self,
+        daily_cb_pct: Optional[float] = None,
+        max_floor_cb_pct: Optional[float] = None,
+        hard_floor_pct: Optional[float] = None,
+        normal_risk_pct: Optional[float] = None,
+        recovery_risk_pct: Optional[float] = None,
+    ):
+        """
+        Dynamically updates risk and circuit breaker parameters and recalculates live floors.
+        Accepts inputs either as percentages (e.g. 4.0 for 4%) or decimals (e.g. 0.04).
+        """
+        if daily_cb_pct is not None:
+            val = float(daily_cb_pct)
+            self.daily_cb_pct = val / 100.0 if val > 0.50 else val
+            self.daily_drawdown_floor = self.day_start_anchor - (self.baseline_capital * self.daily_cb_pct)
+        if max_floor_cb_pct is not None:
+            val = float(max_floor_cb_pct)
+            self.max_floor_cb_pct = val / 100.0 if val > 0.50 else val
+        if hard_floor_pct is not None:
+            val = float(hard_floor_pct)
+            self.hard_floor_pct = val / 100.0 if val > 0.50 else val
+        if normal_risk_pct is not None:
+            val = float(normal_risk_pct)
+            self.normal_risk_pct = val / 100.0 if val > 0.50 else val
+        if recovery_risk_pct is not None:
+            val = float(recovery_risk_pct)
+            self.recovery_risk_pct = val / 100.0 if val > 0.50 else val
+
     def record_trade_result(self, symbol: str, is_loss: bool):
         """
         Tracks consecutive daily losses per symbol.

@@ -90,12 +90,33 @@ python run_apexhunter_2.py --live --auto
 # Dry-Run Paper Trading Mode (Real-time market surveillance without orders)
 python run_apexhunter_2.py --dry-run --auto
 
-# Custom Capital Override (e.g. $10,000 challenge account)
-python run_apexhunter_2.py --live --capital 10000.0 --risk 0.01
+# Custom Capital & Risk Overrides (e.g. $10,000 challenge account with 1% risk)
+python run_apexhunter_2.py --live --capital 10000.0 --risk 1.0
+
+# Custom Prop Firm Drawdown & Circuit Breaker Limits (CLI Overrides)
+python run_apexhunter_2.py --live --daily-cb 4.0 --max-dd 10.0 --floor-cb 8.5 --risk 1.0
 ```
 
-### 3. Running Test Suite
+### 3. Editing Drawdown & Circuit Breakers (3 Methods)
+1. **Interactive Console Menu:**
+   - Launch `python run_apexhunter_2.py`
+   - Select `[3] Manage Lifecycle, DD & CB`
+   - Use `[7]` to edit **Daily Drawdown Limit & Circuit Breaker %** (e.g., 4.0% CB / 5.0% DD)
+   - Use `[8]` to edit **Max Total Drawdown Hard Floor & Floor CB %** (e.g., 8.5% CB / 10.0% Hard Floor)
+   - Use `[2]` / `[3]` to edit Challenge Risk % and Funded Risk %
+   - *Changes are dynamically applied to `RiskGuardian` and automatically saved to `bot_accounts_config.json`.*
+
+2. **Command-Line Arguments (CLI):**
+   - `--daily-cb <pct>`: Daily Drawdown Circuit Breaker limit % (e.g. `4.0` or `0.04`)
+   - `--max-dd <pct>`: Max Total Drawdown Hard Floor limit % (e.g. `10.0` or `0.10`)
+   - `--floor-cb <pct>`: Max Floor Circuit Breaker % (e.g. `8.5` or `0.085`)
+   - `--risk <pct>`: Trade risk percentage per trade (e.g. `1.0` or `0.01`)
+
+3. **Persistent Account Profile (`lk_system/live/bot_accounts_config.json`):**
+   - Edit fields directly: `"daily_cb_pct"`, `"daily_dd_limit_pct"`, `"max_cb_pct"`, `"max_total_dd_pct"`, `"risk_per_trade"`.
+
+### 4. Running Test Suite
 ```powershell
 python -m unittest discover lk_system/tests
 ```
-*(All 95 tests must pass before deploying to a live account).*
+*(All 100 tests must pass before deploying to a live account).*

@@ -78,9 +78,17 @@ class MasterUnifiedBot:
         dry_run: bool = True,
         base_capital: Optional[float] = None,
         max_concurrent_trades: Optional[int] = None,
-        magic_base: Optional[int] = None
+        magic_base: Optional[int] = None,
+        daily_cb_pct: Optional[float] = None,
+        max_floor_cb_pct: Optional[float] = None,
+        hard_floor_pct: Optional[float] = None,
+        risk_pct: Optional[float] = None
     ):
         self.dry_run = dry_run
+        self.cli_daily_cb = daily_cb_pct
+        self.cli_max_floor_cb = max_floor_cb_pct
+        self.cli_hard_floor = hard_floor_pct
+        self.cli_risk = risk_pct
 
         # Load centralized configuration
         config_path = os.path.join(PROJECT_ROOT, "live", "config.json")
@@ -110,13 +118,26 @@ class MasterUnifiedBot:
             broker_offset_hours=broker_offset_hours
         )
 
+        # Parse circuit breaker and risk initial values (CLI overrides fallback to config)
+        init_d_cb = daily_cb_pct if daily_cb_pct is not None else tr_cfg.get("daily_cb_pct", 0.040)
+        init_d_cb = init_d_cb / 100.0 if init_d_cb > 0.50 else init_d_cb
+
+        init_mf_cb = max_floor_cb_pct if max_floor_cb_pct is not None else tr_cfg.get("max_floor_cb_pct", 0.085)
+        init_mf_cb = init_mf_cb / 100.0 if init_mf_cb > 0.50 else init_mf_cb
+
+        init_hf_cb = hard_floor_pct if hard_floor_pct is not None else tr_cfg.get("hard_floor_pct", 0.100)
+        init_hf_cb = init_hf_cb / 100.0 if init_hf_cb > 0.50 else init_hf_cb
+
+        init_risk = risk_pct if risk_pct is not None else tr_cfg.get("normal_risk_pct", 0.010)
+        init_risk = init_risk / 100.0 if init_risk > 0.50 else init_risk
+
         # 2. Institutional Risk Guardian (Dual Circuit Breakers)
         self.risk_guardian = RiskGuardian(
             baseline_capital=self.base_capital,
-            daily_cb_pct=tr_cfg.get("daily_cb_pct", 0.040),      # 4.0% Daily CB ($200)
-            max_floor_cb_pct=tr_cfg.get("max_floor_cb_pct", 0.085),  # 8.5% Floor CB ($425 drop / $4,575 balance)
-            hard_floor_pct=tr_cfg.get("hard_floor_pct", 0.100),    # 10.0% Hard Breach Floor ($500 drop / $4,500 balance)
-            normal_risk_pct=tr_cfg.get("normal_risk_pct", 0.010),   # 1.00% Normal Risk ($50 on $5,000)
+            daily_cb_pct=init_d_cb,          # e.g. 4.0% Daily CB ($200 on $5,000)
+            max_floor_cb_pct=init_mf_cb,     # e.g. 8.5% Floor CB ($425 drop / $4,575 balance)
+            hard_floor_pct=init_hf_cb,       # e.g. 10.0% Hard Breach Floor ($500 drop / $4,500 balance)
+            normal_risk_pct=init_risk,       # e.g. 1.00% Normal Risk ($50 on $5,000)
             recovery_risk_pct=tr_cfg.get("recovery_risk_pct", 0.002)  # 0.20% Recovery Risk in 1.5% buffer (~$9-$10)
         )
 
@@ -617,17 +638,47 @@ class MasterUnifiedBot:
 
         # Load or setup persistent account configuration
         self.acc_cfg = self.acc_mgr.get_or_setup_account(acc)
+        acc_id = str(acc.login)
+
+        # Apply CLI overrides if provided and persist to account configuration
+        if self.cli_daily_cb is not None:
+            cb_val = float(self.cli_daily_cb)
+            cb_pct = cb_val * 100.0 if cb_val <= 0.50 else cb_val
+            self.acc_mgr.update_drawdown_and_cb_limits(acc_id, daily_cb_pct=cb_pct)
+            self.acc_cfg = self.acc_mgr.accounts[acc_id]
+
+        if self.cli_max_floor_cb is not None or self.cli_hard_floor is not None:
+            mcb_pct = None
+            if self.cli_max_floor_cb is not None:
+                mcb_v = float(self.cli_max_floor_cb)
+                mcb_pct = mcb_v * 100.0 if mcb_v <= 0.50 else mcb_v
+            hf_pct = None
+            if self.cli_hard_floor is not None:
+                hf_v = float(self.cli_hard_floor)
+                hf_pct = hf_v * 100.0 if hf_v <= 0.50 else hf_v
+            self.acc_mgr.update_drawdown_and_cb_limits(acc_id, max_cb_pct=mcb_pct, max_total_dd_pct=hf_pct)
+            self.acc_cfg = self.acc_mgr.accounts[acc_id]
+
+        if self.cli_risk is not None:
+            r_val = float(self.cli_risk)
+            r_pct = r_val * 100.0 if r_val <= 0.50 else r_val
+            self.acc_mgr.update_risk_per_trade(acc_id, risk_pct=r_pct)
+            self.acc_cfg = self.acc_mgr.accounts[acc_id]
+
         if self.acc_cfg.get("target_locked", False):
             self.challenge_target_reached = True
 
         # Sync active risk percentage to RiskGuardian
-        if self.acc_cfg.get("use_custom_phase_risk", False):
+        if self.acc_cfg.get("use_custom_phase_risk", False) or self.cli_risk is not None:
             self.risk_guardian.normal_risk_pct = self.acc_cfg.get("risk_per_trade", 0.010)
 
         # Sync Circuit Breakers from persistent account rules
         if "daily_cb_pct" in self.acc_cfg:
             cb_val = float(self.acc_cfg["daily_cb_pct"])
             self.risk_guardian.daily_cb_pct = cb_val / 100.0 if cb_val > 0.50 else cb_val
+        if "max_cb_pct" in self.acc_cfg:
+            mcb_val = float(self.acc_cfg["max_cb_pct"])
+            self.risk_guardian.max_floor_cb_pct = mcb_val / 100.0 if mcb_val > 0.50 else mcb_val
         if "max_total_dd_pct" in self.acc_cfg:
             floor_val = float(self.acc_cfg["max_total_dd_pct"])
             self.risk_guardian.hard_floor_pct = floor_val / 100.0 if floor_val > 0.50 else floor_val
@@ -670,8 +721,8 @@ class MasterUnifiedBot:
 
             is_reached, target_info = self.acc_mgr.check_target_progress(str(acc.login), acc.balance)
 
-            daily_loss = max(0.0, self.risk_guardian.day_start_balance - acc.equity)
-            daily_room = max(0.0, (self.risk_guardian.day_start_balance * self.risk_guardian.daily_cb_pct) - daily_loss)
+            daily_loss = max(0.0, self.risk_guardian.day_start_anchor - min(acc.balance, acc.equity))
+            daily_room = max(0.0, acc.equity - self.risk_guardian.daily_drawdown_floor)
             floor_bal = self.base_capital * (1.0 - self.risk_guardian.max_floor_cb_pct)
             floor_room = max(0.0, acc.equity - floor_bal)
 
@@ -826,11 +877,11 @@ class MasterUnifiedBot:
             render_lifecycle_menu(acc_id, self.acc_cfg, bal)
 
             try:
-                sub_c = input("\nEnter choice [1-8] (Press Enter for [8] Return): ").strip()
+                sub_c = input("\nEnter choice [1-10] (Press Enter for [10] Return): ").strip()
             except (EOFError, KeyboardInterrupt):
                 break
 
-            if sub_c in ["8", ""]:
+            if sub_c in ["10", ""]:
                 break
             elif sub_c == "1":
                 print("\nSelect New Active Phase:")
@@ -936,13 +987,43 @@ class MasterUnifiedBot:
                 console.print(f"\n[bold bright_green]✔ Phase Risk Scaling is now {status_str}![/]")
                 input("\nPress Enter to continue...")
             elif sub_c == "7":
+                curr_cb = self.acc_cfg.get("daily_cb_pct", 4.0)
+                curr_dd = self.acc_cfg.get("daily_dd_limit_pct", 5.0)
+                cb_in = input(f"Enter Daily Circuit Breaker % [Current: {curr_cb:.2f}%]: ").strip().rstrip('%').strip()
+                dd_in = input(f"Enter Daily Drawdown Hard Limit % [Current: {curr_dd:.2f}%]: ").strip().rstrip('%').strip()
+                try:
+                    cb_val = float(cb_in) if cb_in else curr_cb
+                    dd_val = float(dd_in) if dd_in else curr_dd
+                    self.acc_mgr.update_drawdown_and_cb_limits(acc_id, daily_cb_pct=cb_val, daily_dd_limit_pct=dd_val)
+                    self.risk_guardian.update_parameters(daily_cb_pct=cb_val)
+                    self.acc_cfg = self.acc_mgr.accounts[acc_id]
+                    console.print(f"[bold bright_green]✔ Daily Drawdown/CB updated: {cb_val:.2f}% CB (Hard DD: {dd_val:.2f}%)![/]")
+                except ValueError:
+                    console.print("[bold red]✖ Invalid number entered for Daily Drawdown/CB.[/]")
+                input("\nPress Enter to continue...")
+            elif sub_c == "8":
+                curr_mcb = self.acc_cfg.get("max_cb_pct", 8.5)
+                curr_mdd = self.acc_cfg.get("max_total_dd_pct", 10.0)
+                mcb_in = input(f"Enter Max Floor CB % (Recovery Mode) [Current: {curr_mcb:.2f}%]: ").strip().rstrip('%').strip()
+                mdd_in = input(f"Enter Max Total Drawdown Hard Floor % [Current: {curr_mdd:.2f}%]: ").strip().rstrip('%').strip()
+                try:
+                    mcb_val = float(mcb_in) if mcb_in else curr_mcb
+                    mdd_val = float(mdd_in) if mdd_in else curr_mdd
+                    self.acc_mgr.update_drawdown_and_cb_limits(acc_id, max_cb_pct=mcb_val, max_total_dd_pct=mdd_val)
+                    self.risk_guardian.update_parameters(max_floor_cb_pct=mcb_val, hard_floor_pct=mdd_val)
+                    self.acc_cfg = self.acc_mgr.accounts[acc_id]
+                    console.print(f"[bold bright_green]✔ Max Drawdown limits updated: Floor CB {mcb_val:.2f}% | Hard Floor {mdd_val:.2f}%![/]")
+                except ValueError:
+                    console.print("[bold red]✖ Invalid number entered for Max Drawdown/Floor CB.[/]")
+                input("\nPress Enter to continue...")
+            elif sub_c == "9":
                 self.acc_mgr.set_target_locked(acc_id, False)
                 self.challenge_target_reached = False
                 self.acc_cfg = self.acc_mgr.accounts[acc_id]
                 console.print("\n[bold bright_green]✔ Target Lock released! Trading is now active.[/]")
                 input("\nPress Enter to continue...")
             else:
-                console.print("[bold red]✖ Invalid choice. Please enter a number between 1 and 8.[/]")
+                console.print("[bold red]✖ Invalid choice. Please enter a number between 1 and 10.[/]")
 
     def render_economic_calendar(self):
         """Displays upcoming high-impact events from Forex Factory."""
@@ -2238,12 +2319,16 @@ class MasterUnifiedBot:
 MasterRegimeBot = MasterUnifiedBot
 
 def main():
-    parser = argparse.ArgumentParser(description="Master Institutional Unified Bot (Simultaneous Dual-Engine Execution)")
+    parser = argparse.ArgumentParser(description="ApexHunter 2.0 Institutional Unified Bot (Simultaneous Dual-Engine Execution)")
     parser.add_argument("--live", action="store_true", help="Start in Live MT5 Order Execution Mode")
     parser.add_argument("--dry-run", action="store_true", help="Start in Dry-Run Paper Trading Mode")
     parser.add_argument("--auto", "-y", action="store_true", help="Bypass interactive control menu and run immediately")
     parser.add_argument("--capital", type=float, default=None, help="Base account capital override")
-    parser.add_argument("--test-strategy", action="store_true", help="Run 100% strategy logic and indicator calculation diagnostic test suite")
+    parser.add_argument("--daily-cb", type=float, default=None, help="Daily Drawdown Circuit Breaker limit pct (e.g. 4.0 or 0.04 for 4.0%%)")
+    parser.add_argument("--max-dd", type=float, default=None, help="Max Total Drawdown Hard Floor limit pct (e.g. 10.0 or 0.10 for 10.0%%)")
+    parser.add_argument("--floor-cb", "--max-floor-cb", dest="floor_cb", type=float, default=None, help="Max Floor Circuit Breaker pct (e.g. 8.5 or 0.085 for 8.5%%)")
+    parser.add_argument("--risk", type=float, default=None, help="Trade risk percentage per trade (e.g. 1.0 or 0.01 for 1.0%%)")
+    parser.add_argument("--test-strategy", action="store_true", help="Run 100%% strategy logic and indicator calculation diagnostic test suite")
     args = parser.parse_args()
 
     if args.test_strategy:
@@ -2260,7 +2345,14 @@ def main():
     elif args.dry_run:
         is_dry_run = True
 
-    bot = MasterUnifiedBot(dry_run=is_dry_run, base_capital=args.capital)
+    bot = MasterUnifiedBot(
+        dry_run=is_dry_run,
+        base_capital=args.capital,
+        daily_cb_pct=args.daily_cb,
+        max_floor_cb_pct=args.floor_cb,
+        hard_floor_pct=args.max_dd,
+        risk_pct=args.risk
+    )
 
     if not bot.connect_and_check():
         sys.exit(1)

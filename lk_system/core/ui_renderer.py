@@ -161,9 +161,10 @@ def render_institutional_control_center(
         f"{daily_cb_pct*100:.1f}% loss from 00:00 UTC anchor (${day_start:,.2f})",
         f"[bold bright_green]+${daily_room:,.2f} safe[/]" if daily_room > 0 else "[bold bright_red]$0.00 (HALTED)[/]"
     )
+    max_cb_pct = account_cfg.get("max_cb_pct", 8.5) if account_cfg else 8.5
     cb_table.add_row(
         "Max Floor CB",
-        f"8.5% Floor (${floor_cb_bal:,.2f}) | 0.20% Recovery Zone",
+        f"{max_cb_pct:.1f}% Floor (${floor_cb_bal:,.2f}) | 0.20% Recovery Zone",
         f"[bold bright_green]+${floor_room:,.2f} safe[/]" if floor_room > 0 else "[bold bright_red]$0.00 (HALTED)[/]"
     )
     cb_table.add_row(
@@ -203,7 +204,7 @@ def render_institutional_control_center(
 
     action_table.add_row("[bold bright_green][1][/]", "[bold bright_green]Start LIVE Order Execution[/]     [white]— Real MT5 orders, fitted lot sizing, server-side splits[/]")
     action_table.add_row("[bold bright_cyan][2][/]", "[bold bright_cyan]Start DRY-RUN Paper Mode[/]      [white]— Forward test on live market ticks (Zero risk)[/]")
-    action_table.add_row("[bold bright_yellow][3][/]", "[bold bright_yellow]Manage Lifecycle & Risk[/]       [white]— Prop firm phases (P1/P2/Funded), targets & risk scaling[/]")
+    action_table.add_row("[bold bright_yellow][3][/]", "[bold bright_yellow]Manage Lifecycle, DD & CB[/] [white]— Prop firm phases, targets, DD limits & CB floors[/]")
     action_table.add_row("[bold bright_magenta][4][/]", "[bold bright_magenta]Manage Notification Engine[/]    [white]— Setup Telegram Bot / Discord Webhook credentials & test[/]")
     action_table.add_row("[bold yellow][5][/]", "[bold yellow]View Economic Calendar[/]        [white]— Inspect Forex Factory high-impact events & countdowns[/]")
     action_table.add_row("[bold yellow][6][/]", "[bold yellow]View Spread Caps[/]              [white]— Inspect Golden Caps & live broker spreads across all 8 assets[/]")
@@ -284,6 +285,14 @@ def render_lifecycle_menu(acc_id: str, cfg: Dict[str, Any], balance: float):
     table.add_row("Funded Risk Per Trade", f"{cfg.get('funded_risk_pct', 1.00):.2f}%")
     table.add_row("Active Risk Per Trade", f"{cfg.get('risk_per_trade', 0.01)*100.0:.2f}%")
     table.add_row("Custom Phase Risk Scaling", scaling_badge)
+
+    d_cb = cfg.get("daily_cb_pct", 4.0)
+    d_dd = cfg.get("daily_dd_limit_pct", 5.0)
+    m_cb = cfg.get("max_cb_pct", 8.5)
+    m_dd = cfg.get("max_total_dd_pct", 10.0)
+
+    table.add_row("Daily Drawdown & CB", f"[bold bright_yellow]{d_cb:.2f}% CB[/] [dim white](Hard DD Limit: {d_dd:.2f}%)[/]")
+    table.add_row("Max Total Drawdown & CB", f"[bold bright_yellow]{m_cb:.2f}% Floor CB[/] [dim white](Hard Breach Floor: {m_dd:.2f}%)[/]")
     table.add_row("Target Reached Lock", "[bold bright_green]LOCKED (Trading Halted)[/]" if cfg.get("target_locked") else "[white]Active (Trading Allowed)[/]")
     console.print(table)
 
@@ -297,8 +306,10 @@ def render_lifecycle_menu(acc_id: str, cfg: Dict[str, Any], balance: float):
     menu.add_row("[bold yellow][4][/]", "[bold white]Edit Phase Targets[/] [dim white]— Overall combined % & phase ratio[/]")
     menu.add_row("[bold yellow][5][/]", f"[bold white]Reset Starting Balance[/] [dim white]— Current Anchor: [bold cyan]${cfg.get('phase_start_balance', balance):,.2f}[/][/]")
     menu.add_row("[bold yellow][6][/]", f"[bold white]Toggle Phase Risk Scaling[/] [dim white]— Currently: {'[bold bright_green]ON[/]' if use_scaling else '[white]OFF (Fixed 1.00%)[/]'}[/]")
-    menu.add_row("[bold yellow][7][/]", f"[bold white]Unlock Target Lock[/] [dim white]— Current: {'[bold bright_green]LOCKED[/]' if cfg.get('target_locked') else '[white]UNLOCKED[/]'}[/]")
-    menu.add_row("[bold bright_cyan][8][/]", "[bold bright_cyan]Return to Main Menu[/] [dim white]— Go back to main command palette[/]")
+    menu.add_row("[bold yellow][7][/]", f"[bold white]Edit Daily Drawdown & CB %[/] [dim white]— Current: [bold cyan]{d_cb:.2f}% CB / {d_dd:.2f}% Hard DD[/][/]")
+    menu.add_row("[bold yellow][8][/]", f"[bold white]Edit Max Total DD & Floor CB %[/] [dim white]— Current: [bold cyan]{m_cb:.2f}% CB / {m_dd:.2f}% Hard Floor[/][/]")
+    menu.add_row("[bold yellow][9][/]", f"[bold white]Unlock Target Lock[/] [dim white]— Current: {'[bold bright_green]LOCKED[/]' if cfg.get('target_locked') else '[white]UNLOCKED[/]'}[/]")
+    menu.add_row("[bold bright_cyan][10][/]", "[bold bright_cyan]Return to Main Menu[/] [dim white]— Go back to main command palette[/]")
     console.print(menu)
 
 

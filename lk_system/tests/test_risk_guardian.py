@@ -47,6 +47,24 @@ class TestRiskGuardian(unittest.TestCase):
         risk = self.guardian.calculate_fitted_risk_usd(current_balance=4790.0, current_equity=4790.0)
         self.assertEqual(risk, 0.0)
 
+    def test_update_parameters_dynamic(self):
+        t1 = datetime(2026, 1, 15, 0, 0, tzinfo=timezone.utc)
+        self.guardian.reset_daily_if_new_day(t1, current_balance=5000.0)
+        self.assertEqual(self.guardian.daily_drawdown_floor, 4800.0) # 5000 - (5000 * 0.04)
+
+        # Update daily CB to 5% (0.05) and hard floor to 12% (0.12)
+        self.guardian.update_parameters(
+            daily_cb_pct=5.0, # passed as percent
+            max_floor_cb_pct=0.090, # passed as decimal
+            hard_floor_pct=12.0, # passed as percent
+            normal_risk_pct=0.015 # passed as decimal
+        )
+        self.assertAlmostEqual(self.guardian.daily_cb_pct, 0.05, places=4)
+        self.assertAlmostEqual(self.guardian.daily_drawdown_floor, 4750.0, places=2) # 5000 - (5000 * 0.05)
+        self.assertAlmostEqual(self.guardian.max_floor_cb_pct, 0.09, places=4)
+        self.assertAlmostEqual(self.guardian.hard_floor_pct, 0.12, places=4)
+        self.assertAlmostEqual(self.guardian.normal_risk_pct, 0.015, places=4)
+
     def test_fitted_risk_near_daily_cb(self):
         t1 = datetime(2026, 1, 15, 0, 0, tzinfo=timezone.utc)
         self.guardian.reset_daily_if_new_day(t1, current_balance=5000.0)

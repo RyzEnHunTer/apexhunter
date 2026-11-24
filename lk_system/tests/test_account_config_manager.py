@@ -154,6 +154,57 @@ class TestAccountConfigManager(unittest.TestCase):
         self.mgr.update_notification_settings("213877054", platform="none")
         self.assertEqual(self.mgr.get_notification_config("213877054")["active_platform"], "none")
 
+    def test_update_drawdown_and_cb_limits(self):
+        self.mgr.get_or_setup_account(self.mock_acc)
+
+        # Update using percentage values
+        ok = self.mgr.update_drawdown_and_cb_limits(
+            "213877054",
+            daily_cb_pct=4.5,
+            daily_dd_limit_pct=5.5,
+            max_cb_pct=8.0,
+            max_total_dd_pct=9.5
+        )
+        self.assertTrue(ok)
+        cfg = self.mgr.accounts["213877054"]
+        self.assertEqual(cfg["daily_cb_pct"], 4.5)
+        self.assertEqual(cfg["daily_dd_limit_pct"], 5.5)
+        self.assertEqual(cfg["max_cb_pct"], 8.0)
+        self.assertEqual(cfg["max_total_dd_pct"], 9.5)
+
+        # Update using decimal values
+        ok = self.mgr.update_drawdown_and_cb_limits(
+            "213877054",
+            daily_cb_pct=0.040,
+            max_total_dd_pct=0.100
+        )
+        self.assertTrue(ok)
+        cfg2 = self.mgr.accounts["213877054"]
+        self.assertEqual(cfg2["daily_cb_pct"], 4.0)
+        self.assertEqual(cfg2["max_total_dd_pct"], 10.0)
+        # Untouched fields remain
+        self.assertEqual(cfg2["daily_dd_limit_pct"], 5.5)
+        self.assertEqual(cfg2["max_cb_pct"], 8.0)
+
+    def test_update_risk_per_trade(self):
+        self.mgr.get_or_setup_account(self.mock_acc)
+
+        # Update risk via percentage
+        ok = self.mgr.update_risk_per_trade("213877054", risk_pct=1.5)
+        self.assertTrue(ok)
+        cfg = self.mgr.accounts["213877054"]
+        self.assertEqual(cfg["challenge_risk_pct"], 1.5)
+        self.assertEqual(cfg["funded_risk_pct"], 1.5)
+        self.assertEqual(cfg["risk_per_trade"], 0.015)
+
+        # Update risk via decimal
+        ok2 = self.mgr.update_risk_per_trade("213877054", risk_pct=0.0075)
+        self.assertTrue(ok2)
+        cfg2 = self.mgr.accounts["213877054"]
+        self.assertEqual(cfg2["challenge_risk_pct"], 0.75)
+        self.assertEqual(cfg2["funded_risk_pct"], 0.75)
+        self.assertEqual(cfg2["risk_per_trade"], 0.0075)
+
 
 if __name__ == "__main__":
     unittest.main()

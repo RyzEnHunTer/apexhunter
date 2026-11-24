@@ -220,12 +220,34 @@ python run_apexhunter_2.py --live --auto
 # 3. Dry-Run Real-Time Paper Trading (Market surveillance without real orders)
 python run_apexhunter_2.py --dry-run --auto
 
-# 4. Custom Starting Capital Override
-python run_apexhunter_2.py --live --capital 10000.0 --risk 0.01
+# 4. Custom Starting Capital & Risk Override
+python run_apexhunter_2.py --live --capital 10000.0 --risk 1.0
+
+# 5. Custom Prop Firm Drawdown & Circuit Breaker Limits
+python run_apexhunter_2.py --live --daily-cb 4.0 --max-dd 10.0 --floor-cb 8.5 --risk 1.0
 ```
 
-### 7.2 Running Automated Verification Suite
+### 7.2 Editing Drawdown & Circuit Breaker Limits
+Drawdown and Circuit Breaker parameters can be managed via 3 dedicated interfaces:
+1. **Interactive Console Menu:**
+   - Launch `python run_apexhunter_2.py`
+   - Select option `[3] Manage Lifecycle, DD & CB`
+   - Option `[7]`: Edit Daily Drawdown & Circuit Breaker % (e.g. 4.0% CB / 5.0% DD limit)
+   - Option `[8]`: Edit Max Total Drawdown Hard Floor & Floor CB % (e.g. 8.5% CB / 10.0% Hard Floor)
+   - Option `[2]` / `[3]`: Edit Challenge Risk % / Funded Risk %
+   - *All edits dynamically reconfigure `RiskGuardian` and persist to `bot_accounts_config.json`.*
+
+2. **Command-Line Arguments (CLI):**
+   - `--daily-cb <pct>`: Sets Daily Drawdown Circuit Breaker limit % (e.g. `--daily-cb 4.0` or `0.04`)
+   - `--max-dd <pct>`: Sets Max Total Drawdown Hard Floor limit % (e.g. `--max-dd 10.0` or `0.10`)
+   - `--floor-cb <pct>`: Sets Max Floor Circuit Breaker threshold % (e.g. `--floor-cb 8.5` or `0.085`)
+   - `--risk <pct>`: Sets active trade risk percentage (e.g. `--risk 1.0` or `0.01`)
+
+3. **Persistent Profile (`lk_system/live/bot_accounts_config.json`):**
+   - Direct JSON editing of `"daily_cb_pct"`, `"daily_dd_limit_pct"`, `"max_cb_pct"`, `"max_total_dd_pct"`, and `"risk_per_trade"`.
+
+### 7.3 Running Automated Verification Suite
 ```powershell
 python -m unittest discover lk_system/tests
 ```
-*(All 95 unit and integration tests must pass before deploying to live accounts).*
+*(All 100 unit and integration tests must pass before deploying to live accounts).*
