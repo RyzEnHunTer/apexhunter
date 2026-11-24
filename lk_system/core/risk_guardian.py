@@ -39,20 +39,35 @@ class RiskGuardian:
         # State tracking
         self.current_utc_date: Optional[datetime.date] = None
         self.day_start_balance: float = baseline_capital
+        self.day_start_equity: float = baseline_capital
+        self.day_start_anchor: float = baseline_capital
+        self.daily_drawdown_floor: float = baseline_capital * (1.0 - daily_cb_pct)
         self.daily_halt_active: bool = False
         self.hard_floor_breached: bool = False
         self.symbol_consecutive_losses: Dict[str, int] = {}
         self.symbol_daily_halted: Dict[str, bool] = {}
 
-    def reset_daily_if_new_day(self, current_time_utc: datetime, current_balance: float) -> bool:
+    def reset_daily_if_new_day(
+        self,
+        current_time_utc: datetime,
+        current_balance: float,
+        current_equity: Optional[float] = None
+    ) -> bool:
         """
-        Updates the 00:00 UTC day-start anchor and clears daily halt flags.
+        Updates the 00:00 server-time daily anchor and clears daily halt flags.
+        The anchor uses max(balance, equity) at reset, conforming strictly to
+        The5ers, FTMO, and institutional prop-firm rules for overnight holdings.
         Returns True if a new day rollover just occurred.
         """
         now_date = current_time_utc.date()
         if self.current_utc_date is None or now_date > self.current_utc_date:
+            eq = current_equity if current_equity is not None else current_balance
             self.current_utc_date = now_date
             self.day_start_balance = current_balance
+            self.day_start_equity = eq
+            # The5ers & FTMO standard: whichever is higher at the reset
+            self.day_start_anchor = max(current_balance, eq)
+            self.daily_drawdown_floor = self.day_start_anchor - (self.baseline_capital * self.daily_cb_pct)
             self.daily_halt_active = False
             self.symbol_consecutive_losses.clear()
             self.symbol_daily_halted.clear()
@@ -98,29 +113,37 @@ class RiskGuardian:
             self.hard_floor_breached = True
             return False, f"Hard Floor Breached: Drop ${floor_drop:.2f} >= ${self.baseline_capital * self.hard_floor_pct:.2f}"
 
-        # 2. Daily Circuit Breaker Check (4.0% drop from 00:00 UTC)
-        daily_loss = max(0.0, self.day_start_balance - current_equity)
-        daily_limit = self.day_start_balance * self.daily_cb_pct
-        if daily_loss >= daily_limit or self.daily_halt_active:
+        # 2. Daily Circuit Breaker Check (Overnight max(balance, equity) anchor)
+        daily_loss = max(0.0, self.day_start_anchor - min(current_balance, current_equity))
+        daily_limit = self.baseline_capital * self.daily_cb_pct
+        if (
+            current_equity <= self.daily_drawdown_floor
+            or current_balance <= self.daily_drawdown_floor
+            or daily_loss >= daily_limit
+            or self.daily_halt_active
+        ):
             self.daily_halt_active = True
-            return False, f"Daily Circuit Breaker Triggered: Loss ${daily_loss:.2f} >= ${daily_limit:.2f} (Trading Closed Today)"
+            return (
+                False,
+                f"Daily Circuit Breaker Triggered: Loss ${daily_loss:.2f} >= ${daily_limit:.2f} "
+                f"(Floor: ${self.daily_drawdown_floor:,.2f}) (Trading Closed Today)"
+            )
 
         return True, "Trading Allowed"
 
     def calculate_fitted_risk_usd(self, current_balance: float, current_equity: float) -> float:
         """
         Calculates exact dollar risk for the next trade:
-        - Normal Zone: 1.0% risk, clamped to remaining daily room and 8.5% floor CB.
-        - Recovery Zone: 0.20% risk inside the $75 recovery buffer.
+        - Clamped to remaining room before Daily Drawdown Floor (anchored to max(balance, equity) at 00:00).
+        - Clamped to 8.5% floor CB.
+        - Inside the 1.5% recovery buffer ($4,575 to $4,500), scales risk to 0.20%.
         """
         allowed, _ = self.is_trading_allowed(current_balance, current_equity)
         if not allowed:
             return 0.0
 
-        # Remaining room to Daily CB
-        daily_loss = max(0.0, self.day_start_balance - current_equity)
-        daily_limit = self.day_start_balance * self.daily_cb_pct
-        rem_daily = max(0.0, daily_limit - daily_loss)
+        # Remaining room to Daily CB Floor
+        rem_daily = max(0.0, min(current_balance, current_equity) - self.daily_drawdown_floor)
 
         if rem_daily < 2.0:  # Less than $2 buffer left, close day
             self.daily_halt_active = True
@@ -132,7 +155,7 @@ class RiskGuardian:
         hard_floor_limit = self.baseline_capital * self.hard_floor_pct
 
         if floor_drop < floor_cb_limit:
-            # Normal Mode: 1.0% risk, fitted so loss cannot overshoot $425 CB
+            # Normal Mode: 1.0% risk, fitted so loss cannot overshoot $425 CB or Daily Floor
             rem_to_cb = floor_cb_limit - floor_drop
             normal_risk = current_balance * self.normal_risk_pct
             if rem_to_cb >= 20.0:
@@ -140,9 +163,12 @@ class RiskGuardian:
             else:
                 # Smooth transition into recovery risk
                 target_risk = min(current_balance * self.recovery_risk_pct, rem_to_cb)
+            return max(0.0, min(target_risk, rem_daily))
         else:
-            # Recovery Mode inside 1.5% buffer: 0.20% risk, fitted to never breach hard floor
+            # Recovery Mode inside 1.5% buffer: 0.20% risk, fitted to never breach hard floor or Daily Floor
+            recovery_risk = current_balance * self.recovery_risk_pct
             rem_to_hard_floor = max(0.0, hard_floor_limit - floor_drop)
+            return max(0.0, min(recovery_risk, rem_to_hard_floor, rem_daily))
             target_risk = min(current_balance * self.recovery_risk_pct, rem_to_hard_floor)
 
         # Fit into Daily CB budget

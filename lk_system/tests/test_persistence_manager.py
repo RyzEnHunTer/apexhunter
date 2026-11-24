@@ -199,7 +199,10 @@ class TestPersistenceManager(unittest.TestCase):
             day_start_balance=5100.0,
             daily_halt_active=False,
             symbol_consecutive_losses={"XAUUSD": 1, "EURUSD": 2},
-            symbol_daily_halted={"EURUSD": True}
+            symbol_daily_halted={"EURUSD": True},
+            day_start_equity=5250.0,
+            day_start_anchor=5250.0,
+            daily_drawdown_floor=5050.0
         )
 
         # Before recovery, risk guardian defaults to baseline 5000
@@ -213,6 +216,9 @@ class TestPersistenceManager(unittest.TestCase):
 
         self.assertTrue(result["risk_restored"])
         self.assertEqual(self.risk_guardian.day_start_balance, 5100.0)
+        self.assertEqual(self.risk_guardian.day_start_equity, 5250.0)
+        self.assertEqual(self.risk_guardian.day_start_anchor, 5250.0)
+        self.assertEqual(self.risk_guardian.daily_drawdown_floor, 5050.0)
         self.assertEqual(self.risk_guardian.symbol_consecutive_losses["EURUSD"], 2)
         self.assertTrue(self.risk_guardian.symbol_daily_halted["EURUSD"])
 

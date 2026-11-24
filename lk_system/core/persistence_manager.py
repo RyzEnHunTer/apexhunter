@@ -116,13 +116,23 @@ class BotPersistenceManager:
         day_start_balance: float,
         daily_halt_active: bool,
         symbol_consecutive_losses: Dict[str, int],
-        symbol_daily_halted: Dict[str, bool]
+        symbol_daily_halted: Dict[str, bool],
+        day_start_equity: Optional[float] = None,
+        day_start_anchor: Optional[float] = None,
+        daily_drawdown_floor: Optional[float] = None
     ):
         """Persists daily risk tracking anchors and counters."""
         state = self.load_state()
+        eq = day_start_equity if day_start_equity is not None else day_start_balance
+        anchor = day_start_anchor if day_start_anchor is not None else max(day_start_balance, eq)
+        floor = daily_drawdown_floor if daily_drawdown_floor is not None else (anchor - (5000.0 * 0.04))
+
         state["daily_risk_state"] = {
             "date_str": date_str,
             "day_start_balance": float(day_start_balance),
+            "day_start_equity": float(eq),
+            "day_start_anchor": float(anchor),
+            "daily_drawdown_floor": float(floor),
             "daily_halt_active": bool(daily_halt_active),
             "symbol_consecutive_losses": dict(symbol_consecutive_losses),
             "symbol_daily_halted": dict(symbol_daily_halted),
@@ -157,14 +167,22 @@ class BotPersistenceManager:
         if saved_risk and saved_risk.get("date_str") == today_str:
             try:
                 risk_guardian.current_utc_date = datetime.strptime(today_str, "%Y-%m-%d").date()
-                risk_guardian.day_start_balance = float(saved_risk["day_start_balance"])
+                bal = float(saved_risk["day_start_balance"])
+                eq = float(saved_risk.get("day_start_equity", bal))
+                anchor = float(saved_risk.get("day_start_anchor", max(bal, eq)))
+                floor = float(saved_risk.get("daily_drawdown_floor", anchor - (risk_guardian.baseline_capital * risk_guardian.daily_cb_pct)))
+
+                risk_guardian.day_start_balance = bal
+                risk_guardian.day_start_equity = eq
+                risk_guardian.day_start_anchor = anchor
+                risk_guardian.daily_drawdown_floor = floor
                 risk_guardian.daily_halt_active = bool(saved_risk.get("daily_halt_active", False))
                 risk_guardian.symbol_consecutive_losses = dict(saved_risk.get("symbol_consecutive_losses", {}))
                 risk_guardian.symbol_daily_halted = dict(saved_risk.get("symbol_daily_halted", {}))
                 risk_restored = True
                 self.logger.info(
-                    f"[PersistenceManager] Restored same-day risk anchor: Start Balance=${risk_guardian.day_start_balance:,.2f}, "
-                    f"Halt={risk_guardian.daily_halt_active}, Losses={risk_guardian.symbol_consecutive_losses}"
+                    f"[PersistenceManager] Restored same-day risk anchor: Start Bal=${bal:,.2f}, Equity=${eq:,.2f}, "
+                    f"Max Anchor=${anchor:,.2f}, Floor=${floor:,.2f}, Halt={risk_guardian.daily_halt_active}"
                 )
             except Exception as e:
                 self.logger.warning(f"[PersistenceManager] Failed to restore risk state: {e}")

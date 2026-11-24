@@ -637,7 +637,8 @@ class MasterUnifiedBot:
             self.notifier.update_config(self.acc_cfg["notifications"])
 
         now_utc = datetime.now(timezone.utc)
-        self.risk_guardian.reset_daily_if_new_day(now_utc, acc.balance)
+        broker_time = now_utc + self.bridge.broker_offset
+        self.risk_guardian.reset_daily_if_new_day(broker_time, acc.balance, acc.equity)
         return True
 
     def show_interactive_menu(self) -> bool:
@@ -654,7 +655,8 @@ class MasterUnifiedBot:
                 return False
 
             now_utc = datetime.now(timezone.utc)
-            self.risk_guardian.reset_daily_if_new_day(now_utc, acc.balance)
+            broker_time = now_utc + self.bridge.broker_offset
+            self.risk_guardian.reset_daily_if_new_day(broker_time, acc.balance, acc.equity)
 
             # Update High-Water Mark peak equity
             self.acc_mgr.update_high_water_mark(str(acc.login), acc.equity)
@@ -1118,13 +1120,21 @@ class MasterUnifiedBot:
             # 0. Real-Time Killzone, Dead Trap Hour, & Session Alerts
             self.check_session_and_trap_alerts(now_utc)
 
-            # 1. Update High-Water Mark peak equity & Daily Anchor at 00:00 UTC
+            # 1. Update High-Water Mark peak equity & Daily Anchor at 00:00 MT5 Server Time
             self.acc_mgr.update_high_water_mark(str(acc.login), current_equity)
-            if self.risk_guardian.reset_daily_if_new_day(now_utc, current_balance):
+            broker_time = now_utc + self.bridge.broker_offset
+            if self.risk_guardian.reset_daily_if_new_day(broker_time, current_balance, current_equity):
                 self._cb_notified_today = False
                 self._sync_risk_persistence()
-                console.print(f"\n[bold bright_green][DAILY ROLLOVER][/] 00:00 UTC Rollover Anchor Updated: Starting Balance = ${current_balance:,.2f}")
-                self.logger.info(f"00:00 UTC Daily Rollover Anchor Updated: Starting Balance = ${current_balance:,.2f}")
+                console.print(
+                    f"\n[bold bright_green][DAILY ROLLOVER][/] 00:00 Server Time ({broker_time.strftime('%Y-%m-%d %H:%M')}) "
+                    f"Rollover Anchor: Bal=${current_balance:,.2f}, Eq=${current_equity:,.2f} -> "
+                    f"Max Anchor=${self.risk_guardian.day_start_anchor:,.2f} | Floor=${self.risk_guardian.daily_drawdown_floor:,.2f}"
+                )
+                self.logger.info(
+                    f"00:00 Server Time Daily Rollover Anchor Updated: Bal=${current_balance:,.2f}, Eq=${current_equity:,.2f}, "
+                    f"Max Anchor=${self.risk_guardian.day_start_anchor:,.2f}, Floor=${self.risk_guardian.daily_drawdown_floor:,.2f}"
+                )
 
             # 1b. End-of-Day Daily Performance Scorecard at True Market Close (21:05 UTC)
             market_close_h = self.get_dynamic_market_close_hour_utc(now_utc)
@@ -1652,7 +1662,10 @@ class MasterUnifiedBot:
                     day_start_balance=self.risk_guardian.day_start_balance,
                     daily_halt_active=self.risk_guardian.daily_halt_active,
                     symbol_consecutive_losses=self.risk_guardian.symbol_consecutive_losses,
-                    symbol_daily_halted=self.risk_guardian.symbol_daily_halted
+                    symbol_daily_halted=self.risk_guardian.symbol_daily_halted,
+                    day_start_equity=getattr(self.risk_guardian, 'day_start_equity', self.risk_guardian.day_start_balance),
+                    day_start_anchor=getattr(self.risk_guardian, 'day_start_anchor', self.risk_guardian.day_start_balance),
+                    daily_drawdown_floor=getattr(self.risk_guardian, 'daily_drawdown_floor', self.risk_guardian.day_start_balance * (1.0 - self.risk_guardian.daily_cb_pct))
                 )
         except Exception as e:
             self.logger.warning(f"[PersistenceManager] Failed to sync risk state: {e}")

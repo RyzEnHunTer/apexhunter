@@ -802,6 +802,7 @@ class UnifiedBacktestEngine:
         peak_equity = self.base_capital
         current_day: Optional[date] = None
         day_start_balance = self.base_capital
+        day_start_anchor = self.base_capital
         daily_losses: Dict[str, int] = {}
         daily_circuit_breaker_active = False
 
@@ -895,16 +896,18 @@ class UnifiedBacktestEngine:
                     still_open[sym] = tr
             open_trades = still_open
 
-            # 2. Daily reset check at 00:00 UTC
+            # 2. Daily reset check at 00:00 (Prop firm overnight max(balance, equity) anchor)
             t_date = exec_time.date()
             if current_day != t_date:
                 current_day = t_date
+                floating_pnl_at_midnight = sum(max(0.0, getattr(op_tr, 'net_pnl', 0.0)) for op_tr in open_trades.values())
+                day_start_anchor = max(balance, balance + floating_pnl_at_midnight)
                 day_start_balance = balance
                 daily_losses = {sym: 0 for sym in self.symbols}
                 daily_circuit_breaker_active = False
 
-            # Check Dual Circuit Breakers
-            current_day_dd = max(0.0, day_start_balance - balance) / day_start_balance
+            # Check Dual Circuit Breakers (Measured against day_start_anchor)
+            current_day_dd = max(0.0, day_start_anchor - balance) / self.base_capital
             if current_day_dd >= self.daily_cb_pct:
                 daily_circuit_breaker_active = True
 
