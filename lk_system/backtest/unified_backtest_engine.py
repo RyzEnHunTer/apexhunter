@@ -49,6 +49,7 @@ except ImportError:
     mt5 = None
 
 from core.apexhunter_engine import DCCEngineV12, SignalType
+from core.lewis_kelly_engine import LewisKellySMCEngine, PAIRS_CONFIG as LK_PAIRS_CONFIG
 from core.spread_guardian import SpreadGuardian
 from core.news_guardian import NewsGuardian
 
@@ -189,10 +190,14 @@ class UnifiedBacktestEngine:
             self.tz_ny = timezone(timedelta(hours=-5))
             self.tz_london = timezone(timedelta(hours=0))
 
-        # ApexHunter Engines
+        # ApexHunter & Lewis Kelly SMC Engines
         self.apex_engines = {
             "XAUUSD": DCCEngineV12(symbol="XAUUSD", atr_sl_multiplier=0.90, tp1_rr=1.40, tp2_rr=2.20),
             "NAS100": DCCEngineV12(symbol="NAS100", atr_sl_multiplier=1.40, tp1_rr=1.40, tp2_rr=2.10),
+        }
+        self.lk_engines = {
+            sym: LewisKellySMCEngine(symbol=sym, config=cfg)
+            for sym, cfg in LK_PAIRS_CONFIG.items()
         }
 
         # Guardians
@@ -787,6 +792,8 @@ class UnifiedBacktestEngine:
         preloaded_m5: Optional[Dict[str, pd.DataFrame]] = None,
         preloaded_h1: Optional[Dict[str, pd.DataFrame]] = None,
         preloaded_m15: Optional[Dict[str, pd.DataFrame]] = None,
+        preloaded_h4: Optional[Dict[str, pd.DataFrame]] = None,
+        preloaded_m1: Optional[Dict[str, pd.DataFrame]] = None,
         use_ticks: bool = False
     ) -> BacktestResult:
         """
@@ -809,41 +816,58 @@ class UnifiedBacktestEngine:
         # Active trade tracking
         open_trades: Dict[str, BacktestTrade] = {}
 
-        # For MT5, if preloaded data is not passed, fetch rates
-        if preloaded_m5 is None and mt5 is not None and mt5.initialize():
-            preloaded_m5 = {}
-            preloaded_h1 = {}
-            preloaded_m15 = {}
+        def _fetch_mt5_frame(sym: str, tf_const: int, w_start: datetime, w_end: datetime) -> Optional[pd.DataFrame]:
+            raw = mt5.copy_rates_range(sym, tf_const, w_start + self.broker_offset, w_end + self.broker_offset)
+            if raw is None or len(raw) == 0:
+                return None
+            df_f = pd.DataFrame(raw)
+            df_f["time"] = pd.to_datetime(df_f["time"], unit="s", utc=True) - self.broker_offset
+            df_f = df_f.set_index("time")
+            if "tick_volume" in df_f.columns and "volume" not in df_f.columns:
+                df_f = df_f.rename(columns={"tick_volume": "volume"})
+            return df_f
+
+        # For MT5, if no preloaded dataframes were supplied, fetch rates
+        has_any_preloaded = any(
+            x is not None for x in (preloaded_m5, preloaded_h1, preloaded_m15, preloaded_h4, preloaded_m1)
+        )
+        preloaded_m5 = dict(preloaded_m5 or {})
+        preloaded_h1 = dict(preloaded_h1 or {})
+        preloaded_m15 = dict(preloaded_m15 or {})
+        preloaded_h4 = dict(preloaded_h4 or {})
+        preloaded_m1 = dict(preloaded_m1 or {})
+
+        if not has_any_preloaded and mt5 is not None and mt5.initialize():
             utc_start = datetime(start_date.year, start_date.month, start_date.day, 0, 0, tzinfo=timezone.utc)
             utc_end = datetime(end_date.year, end_date.month, end_date.day, 23, 59, tzinfo=timezone.utc)
-            warmup_start = utc_start - timedelta(days=7)
+            warmup_start = utc_start - timedelta(days=20)
 
             for sym in self.symbols:
                 strat = self.get_strategy_for_symbol(sym)
                 if strat == "APEXHUNTER_1_2_1":
-                    r_m5 = mt5.copy_rates_range(sym, mt5.TIMEFRAME_M5, warmup_start + self.broker_offset, utc_end + self.broker_offset)
-                    r_h1 = mt5.copy_rates_range(sym, mt5.TIMEFRAME_H1, warmup_start + self.broker_offset, utc_end + self.broker_offset)
-                    if r_m5 is not None and len(r_m5) > 0:
-                        df_m = pd.DataFrame(r_m5)
-                        df_m['time'] = pd.to_datetime(df_m['time'], unit='s', utc=True) - self.broker_offset
-                        df_m.set_index('time', inplace=True)
-                        preloaded_m5[sym] = df_m
-                    if r_h1 is not None and len(r_h1) > 0:
-                        df_h = pd.DataFrame(r_h1)
-                        df_h['time'] = pd.to_datetime(df_h['time'], unit='s', utc=True) - self.broker_offset
-                        df_h.set_index('time', inplace=True)
-                        preloaded_h1[sym] = df_h
+                    f_m5 = _fetch_mt5_frame(sym, mt5.TIMEFRAME_M5, warmup_start, utc_end)
+                    f_h1 = _fetch_mt5_frame(sym, mt5.TIMEFRAME_H1, warmup_start, utc_end)
+                    if f_m5 is not None: preloaded_m5[sym] = f_m5
+                    if f_h1 is not None: preloaded_h1[sym] = f_h1
                 else:
-                    r_m15 = mt5.copy_rates_range(sym, mt5.TIMEFRAME_M15, warmup_start + self.broker_offset, utc_end + self.broker_offset)
-                    if r_m15 is not None and len(r_m15) > 0:
-                        df_m = pd.DataFrame(r_m15)
-                        df_m['time'] = pd.to_datetime(df_m['time'], unit='s', utc=True) - self.broker_offset
-                        df_m.set_index('time', inplace=True)
-                        preloaded_m15[sym] = df_m
+                    f_h4 = _fetch_mt5_frame(sym, mt5.TIMEFRAME_H4, warmup_start, utc_end)
+                    f_m15 = _fetch_mt5_frame(sym, mt5.TIMEFRAME_M15, warmup_start, utc_end)
+                    lk_cfg = LK_PAIRS_CONFIG.get(sym, {})
+                    tf_ex = lk_cfg.get("tf_exec", "M5")
+                    if f_h4 is not None: preloaded_h4[sym] = f_h4
+                    if f_m15 is not None: preloaded_m15[sym] = f_m15
+                    if tf_ex == "M1":
+                        f_m1 = _fetch_mt5_frame(sym, mt5.TIMEFRAME_M1, warmup_start, utc_end)
+                        if f_m1 is not None: preloaded_m1[sym] = f_m1
+                    else:
+                        f_m5 = _fetch_mt5_frame(sym, mt5.TIMEFRAME_M5, warmup_start, utc_end)
+                        if f_m5 is not None: preloaded_m5[sym] = f_m5
 
         preloaded_m5 = preloaded_m5 or {}
         preloaded_h1 = preloaded_h1 or {}
         preloaded_m15 = preloaded_m15 or {}
+        preloaded_h4 = preloaded_h4 or {}
+        preloaded_m1 = preloaded_m1 or {}
 
         # Prepare indicator dataframes for ApexHunter
         prepared_apex_dfs: Dict[str, pd.DataFrame] = {}
@@ -852,6 +876,19 @@ class UnifiedBacktestEngine:
                 eng = self.apex_engines[sym]
                 df_prep = eng.prepare_data(preloaded_m5[sym], preloaded_h1[sym])
                 prepared_apex_dfs[sym] = df_prep
+
+        # Prepare indicator dataframes for Authentic Lewis Kelly SMC
+        prepared_lk: Dict[str, Dict[str, Any]] = {}
+        for sym, lk_eng in self.lk_engines.items():
+            lk_eng.reset_state()
+            df_ex_raw = preloaded_m1.get(sym) if lk_eng.tf_exec == "M1" else preloaded_m5.get(sym)
+            if sym in preloaded_h4 and sym in preloaded_m15 and df_ex_raw is not None:
+                h4_p, m15_p, ex_p, adr_d, def_adr = lk_eng.prepare_frames(preloaded_h4[sym], preloaded_m15[sym], df_ex_raw)
+                prepared_lk[sym] = {
+                    "h4": h4_p, "m15": m15_p, "exec": ex_p,
+                    "adr_dict": adr_d, "default_adr": def_adr,
+                    "raw_exec": df_ex_raw, "tf_minutes": 1 if lk_eng.tf_exec == "M1" else 5,
+                }
 
         # Gather all candle close timestamps across active symbols between start_date and end_date
         all_timestamps = set()
@@ -863,10 +900,16 @@ class UnifiedBacktestEngine:
             for t in sub.index:
                 all_timestamps.add(t + timedelta(minutes=5))
 
-        for sym, df in preloaded_m15.items():
+        for sym, df in preloaded_m1.items():
             sub = df[(df.index >= utc_start_dt) & (df.index <= utc_end_dt)]
             for t in sub.index:
-                all_timestamps.add(t + timedelta(minutes=15))
+                all_timestamps.add(t + timedelta(minutes=1))
+
+        for sym, df in preloaded_m15.items():
+            if sym not in prepared_lk:
+                sub = df[(df.index >= utc_start_dt) & (df.index <= utc_end_dt)]
+                for t in sub.index:
+                    all_timestamps.add(t + timedelta(minutes=15))
 
         sorted_times = sorted(list(all_timestamps))
 
@@ -900,8 +943,7 @@ class UnifiedBacktestEngine:
             t_date = exec_time.date()
             if current_day != t_date:
                 current_day = t_date
-                floating_pnl_at_midnight = sum(max(0.0, getattr(op_tr, 'net_pnl', 0.0)) for op_tr in open_trades.values())
-                day_start_anchor = max(balance, balance + floating_pnl_at_midnight)
+                day_start_anchor = balance
                 day_start_balance = balance
                 daily_losses = {sym: 0 for sym in self.symbols}
                 daily_circuit_breaker_active = False
@@ -941,6 +983,36 @@ class UnifiedBacktestEngine:
                     setup, reject_reason = self.evaluate_apexhunter_setup(
                         sym, curr_bar, prev_bar, m5_raw, m5_idx, exec_time
                     )
+                elif sym in prepared_lk:
+                    pk = prepared_lk[sym]
+                    bar_time_utc = exec_time - timedelta(minutes=pk["tf_minutes"])
+                    bar_time_ny = pd.Timestamp(bar_time_utc).tz_convert("US/Eastern")
+                    exec_close_ny = pd.Timestamp(exec_time).tz_convert("US/Eastern")
+                    if bar_time_ny not in pk["exec"].index:
+                        continue
+                    exec_row = pk["exec"].loc[bar_time_ny]
+                    # Strictly closed M15 (open <= close - 15m) and H4 (open <= close - 4h) bars only
+                    m15_sub = pk["m15"][pk["m15"].index <= exec_close_ny - pd.Timedelta(minutes=15)]
+                    if m15_sub.empty:
+                        continue
+                    h4_sub = pk["h4"][pk["h4"].index <= exec_close_ny - pd.Timedelta(hours=4)]
+                    h4_bar = h4_sub.iloc[-1] if not h4_sub.empty else None
+                    lk_sig, lk_diag = self.lk_engines[sym].evaluate_bar_state(
+                        exec_row, bar_time_ny, m15_sub.iloc[-1], h4_bar, pk["adr_dict"], pk["default_adr"]
+                    )
+                    if lk_sig is not None:
+                        setup = {
+                            "symbol": sym,
+                            "strategy": "LEWIS_KELLY_SMC",
+                            "direction": lk_sig.direction,
+                            "entry_time": exec_time,
+                            "entry_price": lk_sig.entry_price,
+                            "sl_price": lk_sig.sl_price,
+                            "tp_levels": [lk_sig.tp1, lk_sig.tp2, lk_sig.tp3],
+                        }
+                        reject_reason = "SIGNAL_CONFIRMED"
+                    else:
+                        reject_reason = lk_diag.get("decision", "REJECT_SETUP")
                 else:
                     if sym not in preloaded_m15:
                         continue
@@ -998,7 +1070,12 @@ class UnifiedBacktestEngine:
                 risk_usd = balance * (self.recovery_risk_pct if floor_dd >= (self.max_floor_cb_pct - 0.015) else self.risk_per_trade)
 
                 # Future Bars for trade simulation
-                raw_df = preloaded_m5[sym] if strat == "APEXHUNTER_1_2_1" else preloaded_m15[sym]
+                if strat == "APEXHUNTER_1_2_1":
+                    raw_df = preloaded_m5[sym]
+                elif sym in prepared_lk:
+                    raw_df = prepared_lk[sym]["raw_exec"]
+                else:
+                    raw_df = preloaded_m15[sym]
                 future_df = raw_df[raw_df.index >= exec_time]
                 future_bars = []
                 for b_t, row in future_df.iterrows():

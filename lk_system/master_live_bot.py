@@ -50,6 +50,7 @@ from core.news_guardian import NewsGuardian
 from core.order_manager import OrderManager
 from core.account_config_manager import AccountConfigManager
 from core.apexhunter_engine import DCCEngineV12, SignalType
+from core.lewis_kelly_engine import LewisKellySMCEngine, PAIRS_CONFIG as LK_PAIRS_CONFIG
 from core.audit_logger import MarketAuditLogger, EngineLogger, LiveStateExporter
 from core.asset_handler import AssetHandler
 from core.persistence_manager import BotPersistenceManager
@@ -63,6 +64,13 @@ from core.ui_renderer import (
     render_live_spreads_table,
     render_telemetry_dashboard
 )
+
+def safe_console_print(*args, **kwargs) -> None:
+    """Prints via rich console without raising OSError on detached Windows pipes (WinError 233)."""
+    try:
+        console.print(*args, **kwargs)
+    except OSError:
+        pass
 
 def format_symbol_price(symbol: str, price: float) -> str:
     """Formats asset price according to standard market quote conventions."""
@@ -168,10 +176,14 @@ class MasterUnifiedBot:
         )
         self.asset_handler = getattr(self.bridge, 'asset_handler', None)
 
-        # 7. ApexHunter 1.2.1 Engines for Gold & Nasdaq (Simultaneous Parallel Execution)
+        # 7. ApexHunter 1.2.1 Engines for Gold & Nasdaq + Lewis Kelly SMC Engines for 6 Forex Pairs
         self.apex_engines = {
             'XAUUSD': DCCEngineV12(symbol='XAUUSD', atr_sl_multiplier=0.90, tp1_rr=1.40, tp2_rr=2.20),
             'NAS100': DCCEngineV12(symbol='NAS100', atr_sl_multiplier=1.40, tp1_rr=1.40, tp2_rr=2.10)
+        }
+        self.lk_engines = {
+            sym: LewisKellySMCEngine(symbol=sym, config=cfg)
+            for sym, cfg in LK_PAIRS_CONFIG.items()
         }
 
         # 8. Persistent Account Lifecycle & Evaluation Target Manager
@@ -236,7 +248,7 @@ class MasterUnifiedBot:
         if is_startup:
             self.current_session_state = new_state
             if new_state == "PAUSED_WEEKEND":
-                console.print("\n[bold yellow][STATUS: PAUSED - WEEKEND MARKET CLOSED][/] Resumes: Monday 06:00 UTC (11:30 IST)")
+                safe_console_print("\n[bold yellow][STATUS: PAUSED - WEEKEND MARKET CLOSED][/] Resumes: Monday 06:00 UTC (11:30 IST)")
                 self.notifier.notify_trading_paused(
                     zone_title="Weekend Market Closed (Saturday & Sunday)",
                     reason="Bot started during weekend market closure. Forex & CFD markets are closed.",
@@ -244,7 +256,7 @@ class MasterUnifiedBot:
                     is_startup=True
                 )
             elif new_state == "PAUSED_TRAP_09":
-                console.print("\n[bold yellow][STATUS: PAUSED IN MORNING DEAD TRAP HOUR][/] Resumes: 10:00 UTC (15:30 IST)")
+                safe_console_print("\n[bold yellow][STATUS: PAUSED IN MORNING DEAD TRAP HOUR][/] Resumes: 10:00 UTC (15:30 IST)")
                 self.notifier.notify_trading_paused(
                     zone_title="Morning Dead Trap Hour / Killzone Pause (09:00-10:00 UTC / 14:30-15:30 IST)",
                     reason="Bot started during London midday lull. Scanning suspended to avoid false breakout traps.",
@@ -252,7 +264,7 @@ class MasterUnifiedBot:
                     is_startup=True
                 )
             elif new_state == "PAUSED_TRAP_13":
-                console.print("\n[bold yellow][STATUS: PAUSED IN US DEAD TRAP HOUR][/] Resumes: 14:00 UTC (19:30 IST)")
+                safe_console_print("\n[bold yellow][STATUS: PAUSED IN US DEAD TRAP HOUR][/] Resumes: 14:00 UTC (19:30 IST)")
                 self.notifier.notify_trading_paused(
                     zone_title="US Dead Trap Hour / Killzone Pause (13:00-14:00 UTC / 18:30-19:30 IST)",
                     reason="Bot started during US pre-market transition chop. Trade arming and execution suspended.",
@@ -260,7 +272,7 @@ class MasterUnifiedBot:
                     is_startup=True
                 )
             elif new_state == "PAUSED_ASIAN":
-                console.print("\n[bold yellow][STATUS: PAUSED IN ASIAN RANGE FORMATION][/] Resumes: 06:00 UTC (11:30 IST)")
+                safe_console_print("\n[bold yellow][STATUS: PAUSED IN ASIAN RANGE FORMATION][/] Resumes: 06:00 UTC (11:30 IST)")
                 self.notifier.notify_trading_paused(
                     zone_title="Asian Session Range Formation (19:00-06:00 UTC / 00:30-11:30 IST)",
                     reason="Bot started outside active trading window. Asian session is designated for liquidity range building (entries disabled).",
@@ -276,28 +288,28 @@ class MasterUnifiedBot:
         self.current_session_state = new_state
 
         if new_state == "PAUSED_WEEKEND":
-            console.print("\n[bold yellow][TRADING PAUSED: WEEKEND MARKET CLOSED][/] Forex & CFD markets closed for the weekend.")
+            safe_console_print("\n[bold yellow][TRADING PAUSED: WEEKEND MARKET CLOSED][/] Forex & CFD markets closed for the weekend.")
             self.notifier.notify_trading_paused(
                 zone_title="Weekend Market Closed (Saturday & Sunday)",
                 reason="Forex & CFD markets closed for the weekend. All scanning and execution suspended.",
                 resume_time_str="Monday 06:00 UTC (11:30 IST) - London Session Open"
             )
         elif new_state == "PAUSED_TRAP_09":
-            console.print("\n[bold yellow][TRADING PAUSED: MORNING DEAD TRAP HOUR (09:00 UTC / 14:30 IST)][/]")
+            safe_console_print("\n[bold yellow][TRADING PAUSED: MORNING DEAD TRAP HOUR (09:00 UTC / 14:30 IST)][/]")
             self.notifier.notify_trading_paused(
                 zone_title="Morning Dead Trap Hour / Killzone Pause (09:00-10:00 UTC / 14:30-15:30 IST)",
                 reason="London midday liquidity lull. High risk of false breakout traps.",
                 resume_time_str="10:00 UTC (15:30 IST)"
             )
         elif new_state == "PAUSED_TRAP_13":
-            console.print("\n[bold yellow][TRADING PAUSED: US DEAD TRAP HOUR (13:00 UTC / 18:30 IST)][/]")
+            safe_console_print("\n[bold yellow][TRADING PAUSED: US DEAD TRAP HOUR (13:00 UTC / 18:30 IST)][/]")
             self.notifier.notify_trading_paused(
                 zone_title="US Dead Trap Hour / Killzone Pause (13:00-14:00 UTC / 18:30-19:30 IST)",
                 reason="US pre-market transition chop. Trade arming and execution suspended.",
                 resume_time_str="14:00 UTC (19:30 IST)"
             )
         elif new_state == "PAUSED_ASIAN":
-            console.print("\n[bold yellow][TRADING PAUSED: END-OF-DAY / ASIAN RANGE FORMATION][/]")
+            safe_console_print("\n[bold yellow][TRADING PAUSED: END-OF-DAY / ASIAN RANGE FORMATION][/]")
             self.notifier.notify_trading_paused(
                 zone_title="End-of-Day / Asian Session Range Formation (19:00-06:00 UTC)",
                 reason="Active trading session closed. Asian session is designated for liquidity range building (entries disabled).",
@@ -305,21 +317,21 @@ class MasterUnifiedBot:
             )
         elif new_state == "ACTIVE_LONDON":
             if prev_state in ["PAUSED_ASIAN", "PAUSED_WEEKEND"]:
-                console.print("\n[bold bright_green][TRADING RESUMED: LONDON SESSION OPEN (06:00 UTC / 11:30 IST)][/]")
+                safe_console_print("\n[bold bright_green][TRADING RESUMED: LONDON SESSION OPEN (06:00 UTC / 11:30 IST)][/]")
                 self.notifier.notify_trading_resumed(
                     zone_title="London Session Opened (06:00 UTC / 11:30 IST)",
                     session_name="European / London Killzone Window",
                     details="Weekend closed / Asian range concluded. Active market surveillance and trade execution restored."
                 )
             elif prev_state == "PAUSED_TRAP_09":
-                console.print("\n[bold bright_green][TRADING RESUMED: MORNING DEAD TRAP HOUR ENDED (10:00 UTC / 15:30 IST)][/]")
+                safe_console_print("\n[bold bright_green][TRADING RESUMED: MORNING DEAD TRAP HOUR ENDED (10:00 UTC / 15:30 IST)][/]")
                 self.notifier.notify_trading_resumed(
                     zone_title="Morning Dead Trap Hour Ended (10:00 UTC / 15:30 IST)",
                     session_name="Pre-New York Window",
                     details="Midday trap period concluded. Active market surveillance and trade execution restored."
                 )
             else:
-                console.print("\n[bold bright_green][TRADING RESUMED: LONDON ACTIVE SESSION][/]")
+                safe_console_print("\n[bold bright_green][TRADING RESUMED: LONDON ACTIVE SESSION][/]")
                 self.notifier.notify_trading_resumed(
                     zone_title="London Session Active",
                     session_name="European / London Window",
@@ -327,20 +339,20 @@ class MasterUnifiedBot:
                 )
         elif new_state == "ACTIVE_NY":
             if prev_state == "ACTIVE_LONDON":
-                console.print("\n[bold bright_blue][SESSION UPDATE: NEW YORK SESSION OPEN (12:00 UTC / 17:30 IST)][/]")
+                safe_console_print("\n[bold bright_blue][SESSION UPDATE: NEW YORK SESSION OPEN (12:00 UTC / 17:30 IST)][/]")
                 self.notifier.notify_session(
                     session_name="New York Session (12:00 UTC / 17:30 IST)",
                     status="OPENED - US Killzone Window Active"
                 )
             elif prev_state == "PAUSED_TRAP_13":
-                console.print("\n[bold bright_green][TRADING RESUMED: US DEAD TRAP HOUR ENDED (14:00 UTC / 19:30 IST)][/]")
+                safe_console_print("\n[bold bright_green][TRADING RESUMED: US DEAD TRAP HOUR ENDED (14:00 UTC / 19:30 IST)][/]")
                 self.notifier.notify_trading_resumed(
                     zone_title="US Dead Trap Hour Ended (14:00 UTC / 19:30 IST)",
                     session_name="New York Active Trading Session",
                     details="US pre-market transition ended. Active market surveillance restored."
                 )
             else:
-                console.print("\n[bold bright_green][TRADING RESUMED: NEW YORK ACTIVE SESSION][/]")
+                safe_console_print("\n[bold bright_green][TRADING RESUMED: NEW YORK ACTIVE SESSION][/]")
                 self.notifier.notify_trading_resumed(
                     zone_title="New York Active Trading Session (12:00-19:00 UTC)",
                     session_name="New York Window Active",
@@ -406,7 +418,7 @@ class MasterUnifiedBot:
             try:
                 from backtest.nightly_reconciler import NightlyReconciler
                 reconciler = NightlyReconciler(
-                    symbols=list(self.bridge.target_symbols),
+                    symbols=list(self.bridge.raw_targets),
                     config_path=os.path.join(PROJECT_ROOT, "live", "config.json"),
                     notifier=self.notifier
                 )
@@ -1209,7 +1221,7 @@ class MasterUnifiedBot:
             if self.risk_guardian.reset_daily_if_new_day(broker_time, current_balance, current_equity):
                 self._cb_notified_today = False
                 self._sync_risk_persistence()
-                console.print(
+                safe_console_print(
                     f"\n[bold bright_green][DAILY ROLLOVER][/] 00:00 Server Time ({broker_time.strftime('%Y-%m-%d %H:%M')}) "
                     f"Rollover Anchor: Bal=${current_balance:,.2f}, Eq=${current_equity:,.2f} -> "
                     f"Max Anchor=${self.risk_guardian.day_start_anchor:,.2f} | Floor=${self.risk_guardian.daily_drawdown_floor:,.2f}"
@@ -1233,8 +1245,8 @@ class MasterUnifiedBot:
                     self.acc_mgr.set_target_locked(str(acc.login), True)
                     tgt_pct = target_info.get("active_target_pct", 8.0)
                     phase_num = target_info.get("phase", 1)
-                    console.print(f"\n🏆 [bold bright_green][EVALUATION TARGET ACHIEVED!][/] Phase {phase_num} profit milestone reached! Balance: ${current_balance:,.2f}")
-                    console.print(f"🔒 [bold bright_yellow][TARGET LOCK ENGAGED][/] Trading halted to protect evaluation pass.")
+                    safe_console_print(f"\n🏆 [bold bright_green][EVALUATION TARGET ACHIEVED!][/] Phase {phase_num} profit milestone reached! Balance: ${current_balance:,.2f}")
+                    safe_console_print(f"🔒 [bold bright_yellow][TARGET LOCK ENGAGED][/] Trading halted to protect evaluation pass.")
                     self.logger.info(f"[TARGET REACHED] Phase {phase_num} profit milestone reached! Balance: ${current_balance:,.2f} - Trading halted.")
                     self.notifier.notify_challenge_passed(
                         account_id=str(acc.login),
@@ -1257,9 +1269,10 @@ class MasterUnifiedBot:
             if not allowed:
                 if not getattr(self, "_cb_notified_today", False):
                     self._cb_notified_today = True
-                    console.print(f"\n[bold red][CRITICAL HALT][/] {reason}")
+                    safe_console_print(f"\n[bold red][CRITICAL HALT][/] {reason}")
                     self.logger.critical(f"Circuit Breaker Triggered: {reason}")
-                    cb_type = "floor" if self.risk_guardian.max_floor_cb_breached else "daily"
+                    is_floor = self.risk_guardian.hard_floor_breached or ("Floor" in reason)
+                    cb_type = "floor" if is_floor else "daily"
                     limit_pct = (self.risk_guardian.max_floor_cb_pct * 100.0) if cb_type == "floor" else (self.risk_guardian.daily_cb_pct * 100.0)
                     loss_amt = max(0.0, self.risk_guardian.day_start_balance - current_equity)
                     self.notifier.notify_circuit_breaker(
@@ -1295,11 +1308,12 @@ class MasterUnifiedBot:
                     if is_closed_5m:
                         self.evaluate_apexhunter_setup(canonical, broker_sym, bar_5m, now_utc)
 
-                # Lewis Kelly SMC handles Forex Basket on M15 closed bar
-                elif canonical in ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'EURJPY', 'USDCAD']:
-                    is_closed_15m, bar_15m = self.bridge.check_new_bar_closed(canonical, 'M15')
-                    if is_closed_15m:
-                        self.evaluate_lewis_kelly_setup(canonical, broker_sym, bar_15m, now_utc)
+                # Lewis Kelly SMC handles Forex Basket on pair-specific closed LTF bar (M1 or M5)
+                elif canonical in self.lk_engines:
+                    tf_exec = self.lk_engines[canonical].tf_exec
+                    is_closed_ltf, bar_ltf = self.bridge.check_new_bar_closed(canonical, tf_exec)
+                    if is_closed_ltf:
+                        self.evaluate_lewis_kelly_setup(canonical, broker_sym, bar_ltf, now_utc)
 
             # 9. Periodic Live State JSON Export (Every 5 seconds)
             now_t = time.time()
@@ -1340,7 +1354,7 @@ class MasterUnifiedBot:
                 sym, now_utc, close_lead_min=self.news_auto_close_min
             )
             if should_close:
-                console.print(f"\n🚨 [bold bright_yellow][NEWS AUTO-CLOSE ({self.news_auto_close_min}m BEFORE)][/] Liquidating {sym} ahead of {event_desc} to eliminate gap slippage!")
+                safe_console_print(f"\n🚨 [bold bright_yellow][NEWS AUTO-CLOSE ({self.news_auto_close_min}m BEFORE)][/] Liquidating {sym} ahead of {event_desc} to eliminate gap slippage!")
                 rel_str = f"{now_utc.strftime('%H:%M')} UTC"
                 res_str = f"{(now_utc + timedelta(minutes=self.news_embargo_after_min + self.news_auto_close_min)).strftime('%H:%M')} UTC"
                 self.notifier.notify_news_shield_activated(
@@ -1354,7 +1368,7 @@ class MasterUnifiedBot:
     def check_friday_weekend_close(self, now_utc: datetime):
         """Liquidates open positions on Friday at 16:45 NY (Dynamic DST) to protect against weekend gap risk."""
         if self.is_friday_weekend_close_window(now_utc) and self.open_positions:
-            console.print(f"\n🛡️ [bold bright_yellow][WEEKEND SHIELD][/] Friday 16:45 NY market close reached. Liquidating all open positions to eliminate weekend gap risk.")
+            safe_console_print(f"\n🛡️ [bold bright_yellow][WEEKEND SHIELD][/] Friday 16:45 NY market close reached. Liquidating all open positions to eliminate weekend gap risk.")
             closed_summary = []
             for sym, pos in list(self.open_positions.items()):
                 self.close_position_by_symbol(sym, reason="Friday Weekend Shield (16:45 NY / Dynamic DST)")
@@ -1374,6 +1388,13 @@ class MasterUnifiedBot:
         """Evaluates ApexHunter v1.2.1 TripleGuard rules on Gold/Nasdaq newly closed 5M bar."""
         if canonical in self.open_positions:
             return
+
+        bar_time = bar_5m.name if hasattr(bar_5m, "name") else None
+        if isinstance(bar_time, datetime):
+            bar_utc = bar_time if bar_time.tzinfo else bar_time.replace(tzinfo=timezone.utc)
+            if (now_utc - bar_utc) > timedelta(minutes=15):
+                self.logger.warning(f"[STALE BAR GUARD] Skipping ApexHunter {canonical} M5 bar {bar_utc} (>15m old)")
+                return
 
         bundle = self.bridge.fetch_multi_timeframe_bundle(canonical)
         df_m5 = bundle.get('M5')
@@ -1537,37 +1558,44 @@ class MasterUnifiedBot:
             risk_usd=risk_usd
         )
 
-    def evaluate_lewis_kelly_setup(self, canonical: str, broker_sym: str, bar_15m: pd.Series, now_utc: datetime):
-        """Evaluates Lewis Kelly SMC setups on Forex pairs."""
+    def evaluate_lewis_kelly_setup(self, canonical: str, broker_sym: str, bar_exec: pd.Series, now_utc: datetime):
+        """Evaluates authentic Lewis Kelly multi-timeframe SMC setups (H4 + M15 + M1/M5)."""
         if canonical in self.open_positions:
             return
 
-        # Active during London & NY Sessions (DST aware via London & NY anchors)
-        bar_time = bar_15m.name
-        bar_ny = bar_time.astimezone(self.tz_ny)
-        bar_london = bar_time.astimezone(self.tz_london)
-        in_london = (8 <= bar_london.hour < 12)
-        in_ny = (8 <= bar_ny.hour < 13)
-        session_name = "London" if in_london else ("NY" if in_ny else "Off-Session")
+        bar_time = bar_exec.name if hasattr(bar_exec, "name") else None
+        if isinstance(bar_time, datetime):
+            bar_utc = bar_time if bar_time.tzinfo else bar_time.replace(tzinfo=timezone.utc)
+            if (now_utc - bar_utc) > timedelta(minutes=20):
+                self.logger.warning(f"[STALE BAR GUARD] Skipping Lewis Kelly {canonical} bar {bar_utc} (>20m old)")
+                return
+            bar_ny = bar_utc.astimezone(self.tz_ny)
+            bar_london = bar_utc.astimezone(self.tz_london)
+        else:
+            bar_ny = now_utc.astimezone(self.tz_ny)
+            bar_london = now_utc.astimezone(self.tz_london)
+
+        lk_engine = self.lk_engines.get(canonical) or LewisKellySMCEngine(canonical)
+        tf_exec = lk_engine.tf_exec
 
         audit_record: Dict[str, Any] = {
             "symbol": canonical,
             "strategy": "LEWIS_KELLY_SMC",
-            "timeframe": "M15",
-            "open": float(bar_15m.get('open', 0.0)),
-            "high": float(bar_15m.get('high', 0.0)),
-            "low": float(bar_15m.get('low', 0.0)),
-            "close": float(bar_15m.get('close', 0.0)),
-            "volume": float(bar_15m.get('volume', 0)),
+            "timeframe": tf_exec,
+            "open": float(bar_exec.get('open', 0.0)),
+            "high": float(bar_exec.get('high', 0.0)),
+            "low": float(bar_exec.get('low', 0.0)),
+            "close": float(bar_exec.get('close', 0.0)),
+            "volume": float(bar_exec.get('volume', 0)),
             "asian_high": 0.0,
             "asian_low": 0.0,
             "asian_range_pips": 0.0,
-            "session_active": session_name,
+            "session_active": "NY" if (7 <= bar_ny.hour < 10) else ("London" if (2 <= bar_ny.hour < 5) else "Off-Session"),
             "sweep_detected": False,
             "sweep_level": 0.0,
             "swept_pts": 0.0,
             "decision": "REJECT_SETUP",
-            "reason": "Outside active trading session",
+            "reason": "SMC criteria not met",
             "planned_entry": 0.0,
             "planned_sl": 0.0,
             "planned_tp1": 0.0,
@@ -1576,12 +1604,6 @@ class MasterUnifiedBot:
             "planned_lots": 0.0
         }
 
-        if not (in_london or in_ny):
-            audit_record["decision"] = "REJECT_OUTSIDE_SESSION"
-            audit_record["reason"] = f"Outside London & NY killzones (London={bar_london.strftime('%H:%M')}, NY={bar_ny.strftime('%H:%M')})"
-            self.audit_logger.log_candle(audit_record)
-            return
-
         if bar_ny.weekday() == 4 and (bar_ny.hour > 16 or (bar_ny.hour == 16 and bar_ny.minute >= 45)):
             audit_record["decision"] = "BLOCKED_FRIDAY_CLOSE"
             audit_record["reason"] = "Friday 16:45 NY weekend close cutoff reached"
@@ -1589,77 +1611,44 @@ class MasterUnifiedBot:
             return
 
         bundle = self.bridge.fetch_multi_timeframe_bundle(canonical)
+        df_h4 = bundle.get('H4')
         df_m15 = bundle.get('M15')
-        if df_m15 is None or len(df_m15) < 30:
+        df_exec = bundle.get(tf_exec)
+        if df_h4 is None or df_m15 is None or df_exec is None or len(df_h4) < 12 or len(df_m15) < 30 or len(df_exec) < 10:
             audit_record["decision"] = "REJECT_INSUFFICIENT_DATA"
-            audit_record["reason"] = f"Insufficient M15 bars ({len(df_m15) if df_m15 is not None else 0} < 30)"
+            audit_record["reason"] = (
+                f"Insufficient H4/M15/{tf_exec} bars "
+                f"(H4={len(df_h4) if df_h4 is not None else 0}, "
+                f"M15={len(df_m15) if df_m15 is not None else 0}, "
+                f"{tf_exec}={len(df_exec) if df_exec is not None else 0})"
+            )
             self.audit_logger.log_candle(audit_record)
             return
 
+        df_h4_closed = df_h4.iloc[:-1]
         df_m15_closed = df_m15.iloc[:-1]
+        df_exec_closed = df_exec.iloc[:-1]
 
-        # Asian Session Extreme Sweep (00:00 - 06:00 UTC / 24 M15 bars)
-        today_date = bar_time.date()
-        asian_bars = df_m15_closed[(df_m15_closed.index.date == today_date) & (df_m15_closed.index.hour >= 0) & (df_m15_closed.index.hour < 6)]
-        if asian_bars.empty or len(asian_bars) < 4:
-            audit_record["decision"] = "REJECT_NO_ASIAN_RANGE"
-            audit_record["reason"] = f"Asian range not formed yet ({len(asian_bars)} bars found)"
+        sig, diag = lk_engine.evaluate(df_h4_closed, df_m15_closed, df_exec_closed)
+        audit_record.update({
+            "asian_high": diag.get("asian_high", 0.0),
+            "asian_low": diag.get("asian_low", 0.0),
+            "asian_range_pips": diag.get("asian_range_pips", 0.0),
+            "session_active": diag.get("session_active", audit_record["session_active"]),
+            "sweep_detected": diag.get("sweep_detected", False),
+            "sweep_level": diag.get("sweep_level", 0.0),
+            "decision": diag.get("decision", "REJECT_SETUP"),
+            "reason": diag.get("reason", "SMC criteria not met"),
+        })
+
+        if sig is None:
             self.audit_logger.log_candle(audit_record)
             return
 
-        asian_high = float(asian_bars['high'].max())
-        asian_low = float(asian_bars['low'].min())
-        audit_record["asian_high"] = asian_high
-        audit_record["asian_low"] = asian_low
-
-        specs = self.bridge.get_specs(canonical)
-        digits = specs.get('digits', 5)
-        point = specs.get('point', 0.0001)
-        pip_size = 10.0 * point if digits in [3, 5] else point
-        audit_record["asian_range_pips"] = round(abs(asian_high - asian_low) / pip_size, 1)
-
-        curr_close = float(bar_15m['close'])
-        curr_high = float(bar_15m['high'])
-        curr_low = float(bar_15m['low'])
-
-        sig_type = None
-        sl_price = 0.0
-
-        if curr_low < asian_low and curr_close > asian_low:
-            sig_type = SignalType.BUY
-            sl_price = curr_low - (5.0 * pip_size)
-            audit_record["sweep_detected"] = True
-            audit_record["sweep_level"] = asian_low
-            audit_record["swept_pts"] = (asian_low - curr_low) / pip_size
-        elif curr_high > asian_high and curr_close < asian_high:
-            sig_type = SignalType.SELL
-            sl_price = curr_high + (5.0 * pip_size)
-            audit_record["sweep_detected"] = True
-            audit_record["sweep_level"] = asian_high
-            audit_record["swept_pts"] = (curr_high - asian_high) / pip_size
-
-        if sig_type is None:
-            audit_record["decision"] = "REJECT_INSIDE_ASIAN_RANGE"
-            audit_record["reason"] = f"No Asian extreme sweep: High {curr_high:.5f} <= {asian_high:.5f}, Low {curr_low:.5f} >= {asian_low:.5f}"
-            self.audit_logger.log_candle(audit_record)
-            return
-
-        sl_dist = abs(curr_close - sl_price)
-        if sl_dist <= (2.0 * pip_size):
-            audit_record["decision"] = "REJECT_MIN_SL"
-            audit_record["reason"] = f"SL distance {sl_dist/pip_size:.1f} pips <= 2.0 pip minimum"
-            self.audit_logger.log_candle(audit_record)
-            return
-
-        # Target levels: 2.50R, 5.00R, 8.00R
-        if sig_type == SignalType.BUY:
-            tp1 = curr_close + (2.50 * sl_dist)
-            tp2 = curr_close + (5.00 * sl_dist)
-            tp3 = curr_close + (8.00 * sl_dist)
-        else:
-            tp1 = curr_close - (2.50 * sl_dist)
-            tp2 = curr_close - (5.00 * sl_dist)
-            tp3 = curr_close - (8.00 * sl_dist)
+        sig_type = SignalType.BUY if sig.direction == "BUY" else SignalType.SELL
+        curr_close = sig.entry_price
+        sl_price = sig.sl_price
+        tp1, tp2, tp3 = sig.tp1, sig.tp2, sig.tp3
 
         # Pre-Trade Safety Filters:
         # 1. News Embargo Check
@@ -1730,7 +1719,7 @@ class MasterUnifiedBot:
             return
 
         audit_record["decision"] = f"SIGNAL_{sig_type.name}"
-        audit_record["reason"] = f"Asian Extreme sweep confirmed (Entry {curr_close:.5f}, SL {sl_price:.5f})"
+        audit_record["reason"] = f"Authentic SMC confirmed (H4={sig.h4_trend}, M15={sig.m15_trend}, Entry={curr_close:.5f}, SL={sl_price:.5f})"
         audit_record["planned_entry"] = curr_close
         audit_record["planned_sl"] = sl_price
         audit_record["planned_tp1"] = tp1
@@ -1814,7 +1803,7 @@ class MasterUnifiedBot:
         dir_str = "BUY" if signal_type == SignalType.BUY else "SELL"
         order_type = mt5.ORDER_TYPE_BUY if signal_type == SignalType.BUY else mt5.ORDER_TYPE_SELL
 
-        console.print(f"\n[bold bright_green][EXECUTION][/] {strategy} on {symbol}: [bold bright_cyan]{dir_str}[/] Total Lots: {total_lots:.2f} ({len(splits)} Splits)")
+        safe_console_print(f"\n[bold bright_green][EXECUTION][/] {strategy} on {symbol}: [bold bright_cyan]{dir_str}[/] Total Lots: {total_lots:.2f} ({len(splits)} Splits)")
 
         raw_tick = mt5.symbol_info_tick(broker_sym)
         live_entry_p = (raw_tick.ask if signal_type == SignalType.BUY else raw_tick.bid) if raw_tick else entry_price
@@ -1828,7 +1817,7 @@ class MasterUnifiedBot:
             for i, sp in enumerate(splits):
                 ticket = 999000 + len(self.open_positions) * 3 + (i + 1)
                 tickets.append(ticket)
-                console.print(f"  [DRY-RUN FILL] Order {i+1} ({sp['label']}): #{ticket} ({sp['volume']} lots) | TP: {sp['tp']:.{digits}f}")
+                safe_console_print(f"  [DRY-RUN FILL] Order {i+1} ({sp['label']}): #{ticket} ({sp['volume']} lots) | TP: {sp['tp']:.{digits}f}")
 
             self.open_positions[symbol] = {
                 'group_id': group_id,
@@ -1886,10 +1875,10 @@ class MasterUnifiedBot:
             res = mt5.order_send(req)
             if res and res.retcode == mt5.TRADE_RETCODE_DONE:
                 tickets.append(res.order)
-                console.print(f"  [bold bright_green][MT5 FILLED][/] Order {i+1} ({sp['label']}): Ticket #{res.order} ({sp['volume']} lots)")
+                safe_console_print(f"  [bold bright_green][MT5 FILLED][/] Order {i+1} ({sp['label']}): Ticket #{res.order} ({sp['volume']} lots)")
             else:
                 err = res.comment if res else "No response"
-                console.print(f"  [bold red][MT5 ERROR][/] Order {i+1} failed: {err}")
+                safe_console_print(f"  [bold red][MT5 ERROR][/] Order {i+1} failed: {err}")
 
         if tickets:
             self.open_positions[symbol] = {
@@ -1949,7 +1938,7 @@ class MasterUnifiedBot:
                     if pos['tp1_hit']:
                         self.risk_guardian.record_trade_result(sym, is_loss=False)
                         pnl_est = self.base_capital * self.risk_guardian.normal_risk_pct * 0.4
-                        console.print(f"\n[bold bright_yellow][DRY-RUN EXIT][/] {sym} Sibling orders exited at Breakeven (+0.2R) at {current_p:.5f}.")
+                        safe_console_print(f"\n[bold bright_yellow][DRY-RUN EXIT][/] {sym} Sibling orders exited at Breakeven (+0.2R) at {current_p:.5f}.")
                         self.notifier.notify_trade_closed(
                             symbol=sym,
                             ticket=pos['tickets'][-1] if pos['tickets'] else 0,
@@ -1963,7 +1952,7 @@ class MasterUnifiedBot:
                     else:
                         self.risk_guardian.record_trade_result(sym, is_loss=True)
                         pnl_loss = -self.base_capital * self.risk_guardian.normal_risk_pct
-                        console.print(f"\n[bold red][DRY-RUN EXIT][/] {sym} Trade hit Stop Loss at {current_p:.5f}.")
+                        safe_console_print(f"\n[bold red][DRY-RUN EXIT][/] {sym} Trade hit Stop Loss at {current_p:.5f}.")
                         self.notifier.notify_trade_closed(
                             symbol=sym,
                             ticket=pos['tickets'][0] if pos['tickets'] else 0,
@@ -1991,7 +1980,7 @@ class MasterUnifiedBot:
                         if 'group_id' in pos:
                             self.persistence_manager.update_position_tp1(pos['group_id'], pos['be_sl'])
                         sibling_tix = pos['tickets'][1:] if len(pos['tickets']) > 1 else pos['tickets']
-                        console.print(f"\n[bold bright_green][TARGET HIT][/] {sym} Order 1 hit TP1! Sibling orders moved to Breakeven ({pos['be_sl']:.5f}).")
+                        safe_console_print(f"\n[bold bright_green][TARGET HIT][/] {sym} Order 1 hit TP1! Sibling orders moved to Breakeven ({pos['be_sl']:.5f}).")
                         self.notifier.notify_tp1_breakeven(
                             symbol=sym,
                             ticket_a=pos['tickets'][0],
@@ -2006,13 +1995,13 @@ class MasterUnifiedBot:
                     for sp in pos['active_splits']:
                         tp_reached = (current_p >= sp['tp']) if is_buy else (current_p <= sp['tp'])
                         if tp_reached:
-                            console.print(f"\n[bold bright_green][TARGET HIT][/] {sym} Order ({sp['label']}) hit Take Profit at {sp['tp']:.5f}!")
+                            safe_console_print(f"\n[bold bright_green][TARGET HIT][/] {sym} Order ({sp['label']}) hit Take Profit at {sp['tp']:.5f}!")
                         else:
                             remaining_splits.append(sp)
                     pos['active_splits'] = remaining_splits
                     if not remaining_splits:
                         self.risk_guardian.record_trade_result(sym, is_loss=False)
-                        console.print(f"[bold bright_green][TRADE COMPLETE][/] All Take Profit targets reached for {sym}!")
+                        safe_console_print(f"[bold bright_green][TRADE COMPLETE][/] All Take Profit targets reached for {sym}!")
                         acc_info = mt5.account_info()
                         bal = acc_info.balance if acc_info else self.risk_guardian.day_start_balance
                         daily_loss = max(0.0, self.risk_guardian.day_start_balance - (acc_info.equity if acc_info else bal))
@@ -2036,11 +2025,22 @@ class MasterUnifiedBot:
 
         # Real Live MT5 Position Management
         live_positions = mt5.positions_get()
-        live_tickets = [p.ticket for p in live_positions] if live_positions else []
-        
-        # Check deals history for TP1 fills
-        deals = mt5.history_deals_get(datetime.now(timezone.utc) - timedelta(hours=24), datetime.now(timezone.utc))
-        closed_deal_tickets = [d.order for d in deals] if deals else []
+        if live_positions is None:
+            self.logger.warning("[MT5 API] mt5.positions_get() returned None; skipping active position reconciliation this cycle.")
+            return
+        live_tickets = [p.ticket for p in live_positions]
+
+        # Check deals history (7-day window to support multi-day runners) for TP1 & closed deals
+        deals = mt5.history_deals_get(datetime.now(timezone.utc) - timedelta(days=7), datetime.now(timezone.utc) + timedelta(hours=12))
+        if deals is None:
+            self.logger.warning("[MT5 API] mt5.history_deals_get() returned None; skipping deal-based BE/close attribution this cycle.")
+            closed_deal_tickets = []
+        else:
+            closed_deal_tickets = [
+                getattr(d, 'position_id', d.order)
+                for d in deals
+                if getattr(d, 'entry', 1) == 1
+            ]
 
         mods = self.order_manager.evaluate_breakeven_modifications(live_tickets, closed_deal_tickets)
         for m in mods:
@@ -2069,12 +2069,23 @@ class MasterUnifiedBot:
         for sym, pos in list(self.open_positions.items()):
             active_tix = [t for t in pos['tickets'] if t in live_tickets]
             if not active_tix:
-                console.print(f"[bold yellow][TRADE CLOSED][/] All split orders for {sym} have exited.")
+                if deals is None:
+                    self.logger.warning(f"[MT5 API] Deferring closed-trade cleanup for {sym} because history_deals_get returned None.")
+                    continue
+                safe_console_print(f"[bold yellow][TRADE CLOSED][/] All split orders for {sym} have exited.")
                 total_pnl = 0.0
                 closed_summary = []
                 if deals:
-                    closed_deals = [d for d in deals if d.order in pos['tickets']]
-                    total_pnl = sum(d.profit + d.commission + d.swap for d in closed_deals)
+                    pos_deals = [
+                        d for d in deals
+                        if getattr(d, 'position_id', d.order) in pos['tickets']
+                    ]
+                    closed_deals = [
+                        d for d in pos_deals
+                        if getattr(d, 'entry', 1) == 1
+                    ]
+                    # Sum both entry-side commissions/swaps and exit-side profit/commission/swap
+                    total_pnl = sum(d.profit + d.commission + d.swap for d in pos_deals)
                     for cd in closed_deals:
                         closed_summary.append({
                             "label": cd.comment or "Order",
@@ -2129,7 +2140,10 @@ class MasterUnifiedBot:
 
         # Verify broker stops level distance before sending modification request
         s_info = mt5.symbol_info(broker_sym)
-        stops_level = s_info.stops_level if s_info else 10
+        if s_info is not None:
+            digits = getattr(s_info, 'digits', digits)
+            point = getattr(s_info, 'point', point)
+        stops_level = getattr(s_info, 'trade_stops_level', getattr(s_info, 'stops_level', 10)) if s_info else 10
         tick = mt5.symbol_info_tick(broker_sym)
         price_curr = (tick.ask if pos.type == mt5.ORDER_TYPE_SELL else tick.bid) if tick else pos.price_current
 
@@ -2159,12 +2173,12 @@ class MasterUnifiedBot:
         }
         res = mt5.order_send(req)
         if res and res.retcode == mt5.TRADE_RETCODE_DONE:
-            console.print(f"  [bold bright_green][MT5 SUCCESS][/] Ticket #{ticket} Stop Loss shifted to {new_sl:.{digits}f}")
+            safe_console_print(f"  [bold bright_green][MT5 SUCCESS][/] Ticket #{ticket} Stop Loss shifted to {new_sl:.{digits}f}")
             self.logger.trade(f"[SL SHIFT SUCCESS] Ticket #{ticket} on {broker_sym} SL modified to {new_sl:.{digits}f}")
             return True
         else:
             err = res.comment if res else "No response"
-            console.print(f"  [bold red][MT5 WARN][/] Failed to shift Ticket #{ticket} SL: {err}")
+            safe_console_print(f"  [bold red][MT5 WARN][/] Failed to shift Ticket #{ticket} SL: {err}")
             self.logger.warning(f"[SL SHIFT FAILED] Ticket #{ticket} on {broker_sym}: {err}")
             return False
 
@@ -2278,10 +2292,13 @@ class MasterUnifiedBot:
             return
 
         mode_badge = "[bold bright_yellow]PAPER SIMULATION[/]" if self.dry_run else "[bold bright_green]LIVE MT5 EXECUTION[/]"
-        console.print(f"\n[bold bright_white][BOT ACTIVE][/] Streaming live market data in {mode_badge}. Press [bold cyan]Ctrl+C[/] to stop.\n")
+        safe_console_print(f"\n[bold bright_white][BOT ACTIVE][/] Streaming live market data in {mode_badge}. Press [bold cyan]Ctrl+C[/] to stop.\n")
 
         self.live = Live(console=console, refresh_per_second=4, transient=False)
-        self.live.start()
+        try:
+            self.live.start()
+        except OSError:
+            pass
 
         try:
             last_cycle_time = 0.0
@@ -2297,23 +2314,29 @@ class MasterUnifiedBot:
                 # 2. Update real-time surveillance line in-place at 4 FPS (0.25s interval)
                 acc = mt5.account_info()
                 status_line = self.build_surveillance_status(now_utc, acc)
-                self.live.update(status_line)
+                try:
+                    self.live.update(status_line)
+                except OSError:
+                    pass
                 time.sleep(0.25)
 
         except KeyboardInterrupt:
-            console.print("\n[bold yellow][SHUTDOWN] Bot stopped by user (Ctrl+C). Disconnecting MT5...[/]")
+            safe_console_print("\n[bold yellow][SHUTDOWN] Bot stopped by user (Ctrl+C). Disconnecting MT5...[/]")
             self.logger.info("Bot execution terminated by user (Ctrl+C).")
             self.notifier.notify_shutdown(reason="User Stopped (Ctrl+C)")
         except Exception as e:
             self.logger.critical(f"Critical fatal exception in main run loop: {e}", exc_info=True)
-            console.print(f"\n[bold red][CRITICAL ERROR][/] {e}")
+            safe_console_print(f"\n[bold red][CRITICAL ERROR][/] {e}")
             self.notifier.notify_shutdown(reason=f"Critical Error: {e}")
         finally:
             if self.live is not None:
-                self.live.stop()
+                try:
+                    self.live.stop()
+                except OSError:
+                    pass
             self.bridge.disconnect()
             self.logger.info("MT5 connection closed cleanly. Bot session concluded.")
-            console.print("[bold bright_green][SHUTDOWN] MT5 Connection Closed cleanly. Session concluded.[/]")
+            safe_console_print("[bold bright_green][SHUTDOWN] MT5 Connection Closed cleanly. Session concluded.[/]")
 
 # Backward compatibility alias
 MasterRegimeBot = MasterUnifiedBot

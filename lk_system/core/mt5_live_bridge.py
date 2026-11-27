@@ -108,6 +108,7 @@ class MT5LiveBridge:
                             mt5.symbol_select(b_sym, True)
                         except Exception:
                             pass
+                    self._cache_symbol_specs()
                     return True
         except Exception:
             pass
@@ -244,9 +245,9 @@ class MT5LiveBridge:
         Fetches M1, M5, M15, H1, H4 rates in a single unified call for strategy brain consumption.
         """
         bundle = {}
-        bundle['M1'] = self.fetch_rates(symbol, 'M1', 120)
+        bundle['M1'] = self.fetch_rates(symbol, 'M1', 400)
         bundle['M5'] = self.fetch_rates(symbol, 'M5', 300)
-        bundle['M15'] = self.fetch_rates(symbol, 'M15', 200)
+        bundle['M15'] = self.fetch_rates(symbol, 'M15', 700)
         bundle['H1'] = self.fetch_rates(symbol, 'H1', 150)
         bundle['H4'] = self.fetch_rates(symbol, 'H4', 100)
         return bundle
