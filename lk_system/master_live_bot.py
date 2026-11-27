@@ -217,6 +217,7 @@ class MasterUnifiedBot:
         self.logger = EngineLogger()
         self.state_exporter = LiveStateExporter()
         self.last_state_export: float = 0.0
+        self._dry_ticket_seq: int = 999000
 
         # 11. Real-Time Session & Alert Surveillance State
         self.current_session_state: str = "INITIALIZING"
@@ -375,7 +376,7 @@ class MasterUnifiedBot:
             cushion_remaining = max(0.0, max_allowed_loss - cur_daily_loss)
 
             day_start_dt = datetime(audit_date.year, audit_date.month, audit_date.day, 0, 0, tzinfo=timezone.utc)
-            deals = mt5.history_deals_get(day_start_dt, now_utc)
+            deals = mt5.history_deals_get(day_start_dt, now_utc + timedelta(hours=12))
             closed_deals = []
             win_count = 0
             loss_count = 0
@@ -640,12 +641,12 @@ class MasterUnifiedBot:
     def connect_and_check(self) -> bool:
         """Connects to MT5, resolves broker symbols, and establishes baseline anchors."""
         if not self.bridge.connect():
-            console.print("[bold red][CRITICAL][/] Could not connect to MetaTrader 5!")
+            safe_console_print("[bold red][CRITICAL][/] Could not connect to MetaTrader 5!")
             return False
 
         acc = mt5.account_info()
         if not acc:
-            console.print("[bold red][CRITICAL][/] MT5 connected but failed to retrieve account info!")
+            safe_console_print("[bold red][CRITICAL][/] MT5 connected but failed to retrieve account info!")
             return False
 
         # Load or setup persistent account configuration
@@ -680,20 +681,14 @@ class MasterUnifiedBot:
         if self.acc_cfg.get("target_locked", False):
             self.challenge_target_reached = True
 
-        # Sync active risk percentage to RiskGuardian
-        if self.acc_cfg.get("use_custom_phase_risk", False) or self.cli_risk is not None:
-            self.risk_guardian.normal_risk_pct = self.acc_cfg.get("risk_per_trade", 0.010)
-
-        # Sync Circuit Breakers from persistent account rules
-        if "daily_cb_pct" in self.acc_cfg:
-            cb_val = float(self.acc_cfg["daily_cb_pct"])
-            self.risk_guardian.daily_cb_pct = cb_val / 100.0 if cb_val > 0.50 else cb_val
-        if "max_cb_pct" in self.acc_cfg:
-            mcb_val = float(self.acc_cfg["max_cb_pct"])
-            self.risk_guardian.max_floor_cb_pct = mcb_val / 100.0 if mcb_val > 0.50 else mcb_val
-        if "max_total_dd_pct" in self.acc_cfg:
-            floor_val = float(self.acc_cfg["max_total_dd_pct"])
-            self.risk_guardian.hard_floor_pct = floor_val / 100.0 if floor_val > 0.50 else floor_val
+        # Sync active risk and circuit breaker parameters to RiskGuardian
+        sync_risk = self.acc_cfg.get("risk_per_trade", 0.010) if (self.acc_cfg.get("use_custom_phase_risk", False) or self.cli_risk is not None) else None
+        self.risk_guardian.update_parameters(
+            daily_cb_pct=self.acc_cfg.get("daily_cb_pct"),
+            max_floor_cb_pct=self.acc_cfg.get("max_cb_pct"),
+            hard_floor_pct=self.acc_cfg.get("max_total_dd_pct"),
+            normal_risk_pct=sync_risk,
+        )
 
         # Sync active notification credentials to TradeNotifier
         if "notifications" in self.acc_cfg:
@@ -1094,7 +1089,7 @@ class MasterUnifiedBot:
     def initialize(self) -> bool:
         """Initializes connection to MT5 and all strategy dependencies."""
         if not self.bridge.connect():
-            console.print("[bold red][CRITICAL][/] Could not connect to MetaTrader 5!")
+            safe_console_print("[bold red][CRITICAL][/] Could not connect to MetaTrader 5!")
             return False
 
         acc = mt5.account_info()
@@ -1105,55 +1100,69 @@ class MasterUnifiedBot:
             self.acc_cfg = self.acc_mgr.get_or_setup_account(acc)
             if self.acc_cfg.get("target_locked", False):
                 self.challenge_target_reached = True
-            if self.acc_cfg.get("use_custom_phase_risk", False):
-                self.risk_guardian.normal_risk_pct = self.acc_cfg.get("risk_per_trade", 0.010)
-            if "daily_cb_pct" in self.acc_cfg:
-                cb_val = float(self.acc_cfg["daily_cb_pct"])
-                self.risk_guardian.daily_cb_pct = cb_val / 100.0 if cb_val > 0.50 else cb_val
-            if "max_total_dd_pct" in self.acc_cfg:
-                floor_val = float(self.acc_cfg["max_total_dd_pct"])
-                self.risk_guardian.hard_floor_pct = floor_val / 100.0 if floor_val > 0.50 else floor_val
+
+            # Apply account profile defaults only when not explicitly overridden on CLI
+            cfg_risk = (
+                self.acc_cfg.get("risk_per_trade", 0.010)
+                if (self.cli_risk is None and self.acc_cfg.get("use_custom_phase_risk", False))
+                else None
+            )
+            cfg_daily_cb = self.acc_cfg.get("daily_cb_pct") if self.cli_daily_cb is None else None
+            cfg_max_floor_cb = self.acc_cfg.get("max_cb_pct") if self.cli_max_floor_cb is None else None
+            cfg_hard_floor = self.acc_cfg.get("max_total_dd_pct") if self.cli_hard_floor is None else None
+            self.risk_guardian.update_parameters(
+                daily_cb_pct=cfg_daily_cb,
+                max_floor_cb_pct=cfg_max_floor_cb,
+                hard_floor_pct=cfg_hard_floor,
+                normal_risk_pct=cfg_risk,
+            )
 
         lifecycle = self.acc_cfg.get("account_lifecycle", "challenge").upper()
         curr_phase = self.acc_cfg.get("current_phase", 1)
         use_scaling = self.acc_cfg.get("use_custom_phase_risk", False)
-        active_r = (self.acc_cfg.get("risk_per_trade", 0.01) * 100.0)
+        active_r = self.risk_guardian.normal_risk_pct * 100.0
         mode_badge = f"CHALLENGE (Phase {curr_phase})" if lifecycle == "CHALLENGE" else "FUNDED (Profit Share)"
 
-        console.print("=" * 85)
-        console.print(f"       [bold bright_white]INITIALIZING MASTER INSTITUTIONAL UNIFIED BOT[/] [bright_cyan]({mode_str})[/]")
-        console.print("=" * 85)
-        console.print(f"  Connected to Broker:     [bold white]{term.company}[/] ({term.name})")
-        console.print(f"  Account Login:           [bold white]{acc.login}[/] ([bright_green]{acc.server}[/])")
-        console.print(f"  Account Balance:         [bold bright_green]${acc.balance:,.2f}[/] (Equity: ${acc.equity:,.2f})")
-        console.print(f"  Execution Mode:          [bold bright_yellow]{mode_str}[/]")
-        console.print(f"  Account Lifecycle:       [bold bright_yellow]{mode_badge}[/] (Scaling: {'ON' if use_scaling else 'OFF'}, Risk: {active_r:.2f}%)")
+        safe_console_print("=" * 85)
+        safe_console_print(f"       [bold bright_white]INITIALIZING MASTER INSTITUTIONAL UNIFIED BOT[/] [bright_cyan]({mode_str})[/]")
+        safe_console_print("=" * 85)
+        safe_console_print(f"  Connected to Broker:     [bold white]{term.company}[/] ({term.name})")
+        safe_console_print(f"  Account Login:           [bold white]{acc.login}[/] ([bright_green]{acc.server}[/])")
+        safe_console_print(f"  Account Balance:         [bold bright_green]${acc.balance:,.2f}[/] (Equity: ${acc.equity:,.2f})")
+        safe_console_print(f"  Execution Mode:          [bold bright_yellow]{mode_str}[/]")
+        safe_console_print(f"  Account Lifecycle:       [bold bright_yellow]{mode_badge}[/] (Scaling: {'ON' if use_scaling else 'OFF'}, Risk: {active_r:.2f}%)")
         if lifecycle == "CHALLENGE":
             tgt_pct = self.acc_cfg.get("phase_1_target_pct", 8.0) if str(curr_phase) == "1" else self.acc_cfg.get("phase_2_target_pct", 5.0)
             start_b = self.acc_cfg.get("phase_start_balance", acc.balance)
-            console.print(f"  Milestone Target:        +{tgt_pct:.1f}% (${start_b * (1.0 + tgt_pct/100.0):,.2f}) | Start: ${start_b:,.2f}")
-        console.print(f"  Simultaneous Engines:    1. ApexHunter v1.2.1 (XAUUSD, NAS100) + 2. Lewis Kelly SMC (6 Pairs)")
-        console.print(f"  Market Switcher Status:  [bold bright_green]PERMANENTLY PARALLEL[/] (No Switcher / Filter)")
-        console.print(f"  Daily Circuit Breaker:   4.0% (-${acc.balance * 0.040:,.2f}) from 00:00 UTC")
-        console.print(f"  Max Floor CB:            8.5% (${self.base_capital * (1.0 - 0.085):,.2f} Floor / 0.20% Recovery Zone)")
-        console.print(f"  News Shield:             {self.news_auto_close_min}m Auto-Close / {self.news_embargo_before_min}m Pre-Embargo / 12h Sync")
-        console.print(f"  Spread Filter:           Golden Numbers + Max 30% of SL Distance")
-        console.print(f"  Max Concurrent Slots:    {self.max_concurrent_trades}")
-        console.print("=" * 85)
+            safe_console_print(f"  Milestone Target:        +{tgt_pct:.1f}% (${start_b * (1.0 + tgt_pct/100.0):,.2f}) | Start: ${start_b:,.2f}")
+        safe_console_print(f"  Simultaneous Engines:    1. ApexHunter v1.2.1 (XAUUSD, NAS100) + 2. Lewis Kelly SMC (6 Pairs)")
+        safe_console_print(f"  Market Switcher Status:  [bold bright_green]PERMANENTLY PARALLEL[/] (No Switcher / Filter)")
+        safe_console_print(f"  Daily Circuit Breaker:   {self.risk_guardian.daily_cb_pct * 100.0:.1f}% (-${self.base_capital * self.risk_guardian.daily_cb_pct:,.2f}) from 00:00 Server Time")
+        safe_console_print(f"  Max Floor CB:            {self.risk_guardian.max_floor_cb_pct * 100.0:.1f}% (${self.base_capital * (1.0 - self.risk_guardian.max_floor_cb_pct):,.2f} Floor / {self.risk_guardian.recovery_risk_pct * 100.0:.2f}% Recovery Zone)")
+        safe_console_print(f"  News Shield:             {self.news_auto_close_min}m Auto-Close / {self.news_embargo_before_min}m Pre-Embargo / 12h Sync")
+        safe_console_print(f"  Spread Filter:           Golden Numbers + Max 30% of SL Distance")
+        safe_console_print(f"  Max Concurrent Slots:    {self.max_concurrent_trades}")
+        safe_console_print("=" * 85)
 
-        # Crash recovery & state reconciliation
-        live_pos = mt5.positions_get() if (not self.dry_run and mt5 is not None) else []
+        # Crash recovery & state reconciliation (matched against broker server day)
+        live_pos = []
+        if not self.dry_run and mt5 is not None:
+            live_pos = mt5.positions_get()
+            if live_pos is None and self.bridge.ensure_connected():
+                live_pos = mt5.positions_get()
+        broker_today_str = (datetime.now(timezone.utc) + self.bridge.broker_offset).strftime("%Y-%m-%d")
         rec_result = self.persistence_manager.recover_state(
             live_positions=list(live_pos) if live_pos else [],
             order_manager=self.order_manager,
             risk_guardian=self.risk_guardian,
-            asset_handler=self.asset_handler
+            asset_handler=self.asset_handler,
+            today_str=broker_today_str
         )
         rec_count = rec_result["recovered_count"]
         self.open_positions = rec_result["open_positions"]
 
         if rec_count > 0 or rec_result["risk_restored"]:
-            console.print(
+            safe_console_print(
                 f"[bold bright_green]  [CRASH RECOVERY] Successfully recovered {rec_count} active position groups "
                 f"from MT5 (Risk Restored: {rec_result['risk_restored']})![/]"
             )
@@ -1221,6 +1230,8 @@ class MasterUnifiedBot:
             if self.risk_guardian.reset_daily_if_new_day(broker_time, current_balance, current_equity):
                 self._cb_notified_today = False
                 self._sync_risk_persistence()
+                # Refresh broker UTC offset on rollover in case server switched DST over weekend
+                self.bridge._sync_broker_timezone()
                 safe_console_print(
                     f"\n[bold bright_green][DAILY ROLLOVER][/] 00:00 Server Time ({broker_time.strftime('%Y-%m-%d %H:%M')}) "
                     f"Rollover Anchor: Bal=${current_balance:,.2f}, Eq=${current_equity:,.2f} -> "
@@ -1778,10 +1789,25 @@ class MasterUnifiedBot:
         vol_step = specs.get('volume_step', 0.01)
         vol_max = specs.get('volume_max', 100.0)
 
-        # Calculate exact total lots
+        # Re-anchor lot sizing and stop validation against live executable fill quote
+        raw_tick = mt5.symbol_info_tick(broker_sym)
+        live_entry_p = (raw_tick.ask if signal_type == SignalType.BUY else raw_tick.bid) if raw_tick else entry_price
+        if not live_entry_p or live_entry_p <= 0:
+            live_entry_p = entry_price
+
+        # Ensure live fill price has not crossed signal Stop Loss before placing orders
+        if (signal_type == SignalType.BUY and live_entry_p <= stop_loss) or (
+            signal_type == SignalType.SELL and live_entry_p >= stop_loss
+        ):
+            self.logger.warning(
+                f"[EXECUTION ABORTED] {symbol} live entry {live_entry_p:.{digits}f} already beyond SL {stop_loss:.{digits}f}."
+            )
+            return
+
+        # Calculate exact total lots from actual live fill distance so spread spikes never inflate risk
         total_lots = self.risk_guardian.calculate_lot_size(
             symbol=symbol,
-            entry_price=entry_price,
+            entry_price=live_entry_p,
             sl_price=stop_loss,
             tick_size=tick_sz,
             tick_value=tick_val,
@@ -1805,82 +1831,21 @@ class MasterUnifiedBot:
 
         safe_console_print(f"\n[bold bright_green][EXECUTION][/] {strategy} on {symbol}: [bold bright_cyan]{dir_str}[/] Total Lots: {total_lots:.2f} ({len(splits)} Splits)")
 
-        raw_tick = mt5.symbol_info_tick(broker_sym)
-        live_entry_p = (raw_tick.ask if signal_type == SignalType.BUY else raw_tick.bid) if raw_tick else entry_price
-        sl_dist = abs(entry_price - stop_loss)
-        be_sl = entry_price + (0.2 * sl_dist) if signal_type == SignalType.BUY else entry_price - (0.2 * sl_dist)
+        sl_dist = abs(live_entry_p - stop_loss)
+        be_sl = live_entry_p + (0.2 * sl_dist) if signal_type == SignalType.BUY else live_entry_p - (0.2 * sl_dist)
 
         group_id = f"{symbol}_{int(time.time())}"
         tickets = []
+        filled_splits = []
 
         if self.dry_run:
             for i, sp in enumerate(splits):
-                ticket = 999000 + len(self.open_positions) * 3 + (i + 1)
+                self._dry_ticket_seq += 1
+                ticket = self._dry_ticket_seq
                 tickets.append(ticket)
+                filled_splits.append(sp)
                 safe_console_print(f"  [DRY-RUN FILL] Order {i+1} ({sp['label']}): #{ticket} ({sp['volume']} lots) | TP: {sp['tp']:.{digits}f}")
 
-            self.open_positions[symbol] = {
-                'group_id': group_id,
-                'strategy': strategy,
-                'symbol': symbol,
-                'broker_sym': broker_sym,
-                'direction': dir_str,
-                'entry_price': entry_price,
-                'sl': stop_loss,
-                'be_sl': be_sl,
-                'splits': splits,
-                'active_splits': splits[1:],
-                'tickets': tickets,
-                'tp1_hit': False,
-                'entry_time': datetime.now(timezone.utc).isoformat()
-            }
-            self.order_manager.register_position_group(group_id, strategy, symbol, entry_price, stop_loss, be_sl, tickets)
-            self.persistence_manager.save_position(group_id, self.open_positions[symbol])
-            self._sync_risk_persistence()
-            q = self.bridge.get_latest_quote(symbol)
-            self.notifier.notify_trade_opened(
-                symbol=symbol,
-                direction=dir_str,
-                entry_price=entry_price,
-                spread=q['spread'] if q else 0.0,
-                total_lots=total_lots,
-                sl=stop_loss,
-                splits=splits,
-                tickets=tickets,
-                strategy=strategy,
-                is_dry_run=True
-            )
-            return
-
-        # Real Live Order Send to MT5
-        info = mt5.symbol_info(broker_sym)
-        fill_mode = self.get_safe_filling_mode(info)
-
-        for i, sp in enumerate(splits):
-            magic = self.magic_base + (i + 1)
-            req = {
-                "action": mt5.TRADE_ACTION_DEAL,
-                "symbol": broker_sym,
-                "volume": sp['volume'],
-                "type": order_type,
-                "price": live_entry_p,
-                "sl": round(stop_loss, digits),
-                "tp": round(sp['tp'], digits),
-                "deviation": 20,
-                "magic": magic,
-                "comment": f"{strategy[:3]}_T{i+1}",
-                "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": fill_mode,
-            }
-            res = mt5.order_send(req)
-            if res and res.retcode == mt5.TRADE_RETCODE_DONE:
-                tickets.append(res.order)
-                safe_console_print(f"  [bold bright_green][MT5 FILLED][/] Order {i+1} ({sp['label']}): Ticket #{res.order} ({sp['volume']} lots)")
-            else:
-                err = res.comment if res else "No response"
-                safe_console_print(f"  [bold red][MT5 ERROR][/] Order {i+1} failed: {err}")
-
-        if tickets:
             self.open_positions[symbol] = {
                 'group_id': group_id,
                 'strategy': strategy,
@@ -1890,7 +1855,8 @@ class MasterUnifiedBot:
                 'entry_price': live_entry_p,
                 'sl': stop_loss,
                 'be_sl': be_sl,
-                'splits': splits,
+                'splits': filled_splits,
+                'active_splits': filled_splits[1:],
                 'tickets': tickets,
                 'tp1_hit': False,
                 'entry_time': datetime.now(timezone.utc).isoformat()
@@ -1904,9 +1870,88 @@ class MasterUnifiedBot:
                 direction=dir_str,
                 entry_price=live_entry_p,
                 spread=q['spread'] if q else 0.0,
-                total_lots=total_lots,
+                total_lots=round(sum(sp['volume'] for sp in filled_splits), 2),
                 sl=stop_loss,
-                splits=splits,
+                splits=filled_splits,
+                tickets=tickets,
+                strategy=strategy,
+                is_dry_run=True
+            )
+            return
+
+        # Real Live Order Send to MT5
+        info = mt5.symbol_info(broker_sym)
+        fill_mode = self.get_safe_filling_mode(info)
+        requote_codes = {10004, 10018, 10021}  # Requote / Market closed / Price changed
+
+        for i, sp in enumerate(splits):
+            magic = self.magic_base + (i + 1)
+            send_price = live_entry_p
+            res = None
+            for attempt in range(2):
+                req = {
+                    "action": mt5.TRADE_ACTION_DEAL,
+                    "symbol": broker_sym,
+                    "volume": sp['volume'],
+                    "type": order_type,
+                    "price": send_price,
+                    "sl": round(stop_loss, digits),
+                    "tp": round(sp['tp'], digits),
+                    "deviation": 20,
+                    "magic": magic,
+                    "comment": f"{strategy[:3]}_T{i+1}",
+                    "type_time": mt5.ORDER_TIME_GTC,
+                    "type_filling": fill_mode,
+                }
+                res = mt5.order_send(req)
+                if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+                    break
+                if res and getattr(res, "retcode", None) in requote_codes and attempt == 0:
+                    retry_tick = mt5.symbol_info_tick(broker_sym)
+                    if retry_tick:
+                        retry_p = retry_tick.ask if signal_type == SignalType.BUY else retry_tick.bid
+                        if retry_p and retry_p > 0:
+                            send_price = retry_p
+                    continue
+                break
+
+            if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+                tickets.append(res.order)
+                filled_splits.append(sp)
+                safe_console_print(f"  [bold bright_green][MT5 FILLED][/] Order {i+1} ({sp['label']}): Ticket #{res.order} ({sp['volume']} lots)")
+            else:
+                err = res.comment if res else "No response"
+                self.logger.error(f"[MT5 ORDER FAILED] {symbol} {sp['label']}: {err} (retcode={getattr(res, 'retcode', None)})")
+                safe_console_print(f"  [bold red][MT5 ERROR][/] Order {i+1} failed: {err}")
+
+        if tickets:
+            actual_lots = round(sum(sp['volume'] for sp in filled_splits), 2)
+            self.open_positions[symbol] = {
+                'group_id': group_id,
+                'strategy': strategy,
+                'symbol': symbol,
+                'broker_sym': broker_sym,
+                'direction': dir_str,
+                'entry_price': live_entry_p,
+                'sl': stop_loss,
+                'be_sl': be_sl,
+                'splits': filled_splits,
+                'tickets': tickets,
+                'tp1_hit': False,
+                'entry_time': datetime.now(timezone.utc).isoformat()
+            }
+            self.order_manager.register_position_group(group_id, strategy, symbol, live_entry_p, stop_loss, be_sl, tickets)
+            self.persistence_manager.save_position(group_id, self.open_positions[symbol])
+            self._sync_risk_persistence()
+            q = self.bridge.get_latest_quote(symbol)
+            self.notifier.notify_trade_opened(
+                symbol=symbol,
+                direction=dir_str,
+                entry_price=live_entry_p,
+                spread=q['spread'] if q else 0.0,
+                total_lots=actual_lots,
+                sl=stop_loss,
+                splits=filled_splits,
                 tickets=tickets,
                 strategy=strategy,
                 is_dry_run=False
@@ -2183,35 +2228,69 @@ class MasterUnifiedBot:
             return False
 
     def close_position_by_symbol(self, symbol: str, reason: str = "Manual/News Close"):
-        """Liquidates all positions for a specific symbol."""
+        """Liquidates all positions for a specific symbol safely with verified filling mode."""
         self.logger.trade(f"[LIQUIDATE POSITION] Liquidating all positions on {symbol} - Reason: {reason}")
-        if symbol in self.open_positions:
-            pos = self.open_positions[symbol]
-            if 'group_id' in pos:
-                self.persistence_manager.remove_position(pos['group_id'])
-            del self.open_positions[symbol]
-            self._sync_risk_persistence()
+        all_closed = True
+        closed_tix = set()
 
         if not self.dry_run:
             positions = mt5.positions_get()
-            if positions:
-                broker_sym = self.bridge.resolved_symbols.get(symbol, symbol)
-                for p in positions:
-                    if p.symbol == broker_sym or symbol in p.symbol:
-                        order_type = mt5.ORDER_TYPE_SELL if p.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
-                        tick = mt5.symbol_info_tick(p.symbol)
-                        price = (tick.bid if p.type == mt5.ORDER_TYPE_BUY else tick.ask) if tick else p.price_current
-                        req = {
-                            "action": mt5.TRADE_ACTION_DEAL,
-                            "position": p.ticket,
-                            "symbol": p.symbol,
-                            "volume": p.volume,
-                            "type": order_type,
-                            "price": price,
-                            "deviation": 30,
-                        }
-                        res = mt5.order_send(req)
-                        self.logger.trade(f"[MT5 CLOSE] Ticket #{p.ticket} on {p.symbol} closed at {price} (RetCode={res.retcode if res else 'None'})")
+            if positions is None and self.bridge.ensure_connected():
+                positions = mt5.positions_get()
+            if positions is None:
+                self.logger.error(f"[LIQUIDATE ABORTED] Cannot close {symbol}: mt5.positions_get() returned None.")
+                return
+
+            broker_sym = self.bridge.resolved_symbols.get(symbol, symbol)
+            tracked_tix = set(self.open_positions.get(symbol, {}).get('tickets', []))
+            for p in positions:
+                if p.ticket in tracked_tix or p.symbol == broker_sym or symbol in p.symbol:
+                    order_type = mt5.ORDER_TYPE_SELL if p.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
+                    s_info = mt5.symbol_info(p.symbol)
+                    fill_mode = self.get_safe_filling_mode(s_info)
+                    tick = mt5.symbol_info_tick(p.symbol)
+                    price = (tick.bid if p.type == mt5.ORDER_TYPE_BUY else tick.ask) if tick else p.price_current
+                    req = {
+                        "action": mt5.TRADE_ACTION_DEAL,
+                        "position": p.ticket,
+                        "symbol": p.symbol,
+                        "volume": p.volume,
+                        "type": order_type,
+                        "price": price,
+                        "deviation": 30,
+                        "type_time": mt5.ORDER_TIME_GTC,
+                        "type_filling": fill_mode,
+                    }
+                    res = mt5.order_send(req)
+                    ok = bool(res and res.retcode == mt5.TRADE_RETCODE_DONE)
+                    if not ok:
+                        all_closed = False
+                        self.logger.error(
+                            f"[MT5 CLOSE FAILED] Ticket #{p.ticket} on {p.symbol}: "
+                            f"{getattr(res, 'comment', 'No response')} (retcode={getattr(res, 'retcode', None)})"
+                        )
+                    else:
+                        closed_tix.add(p.ticket)
+                        self.logger.trade(f"[MT5 CLOSE] Ticket #{p.ticket} on {p.symbol} closed at {price} (RetCode={res.retcode})")
+
+        if symbol in self.open_positions:
+            pos = self.open_positions[symbol]
+            group_id = pos.get('group_id')
+            if all_closed:
+                if group_id:
+                    self.persistence_manager.remove_position(group_id)
+                    self.order_manager.active_groups.pop(group_id, None)
+                del self.open_positions[symbol]
+                self._sync_risk_persistence()
+            elif closed_tix:
+                # Partial liquidation: remove already-closed legs & suppress false TP1 BE on remaining legs
+                pos['tickets'] = [t for t in pos.get('tickets', []) if t not in closed_tix]
+                if group_id and group_id in self.order_manager.active_groups:
+                    grp = self.order_manager.active_groups[group_id]
+                    grp['tickets'] = list(pos['tickets'])
+                    grp['be_updated'] = True
+                if group_id:
+                    self.persistence_manager.save_position(group_id, pos)
 
     def emergency_close_all(self, reason: str = "Emergency Circuit Breaker Close"):
         """Emergency closes all open positions across all symbols immediately."""

@@ -119,13 +119,12 @@ class OrderManager:
                 vol_2 = round(round((total_lots * 0.30) / volume_step) * volume_step, 2)
                 vol_3 = round(total_lots - vol_1 - vol_2, 2)
 
-                # Ensure minimum compliance
+                # Ensure minimum compliance and keep step alignment without dropping vol_3 below volume_min
                 vol_1 = max(volume_min, vol_1)
                 vol_2 = max(volume_min, vol_2)
-                vol_3 = max(volume_min, vol_3)
-                # Re-adjust rounding difference
+                vol_3 = max(volume_min, round(round(vol_3 / volume_step) * volume_step, 2))
                 diff = round(total_lots - (vol_1 + vol_2 + vol_3), 2)
-                vol_3 = round(vol_3 + diff, 2)
+                vol_3 = max(volume_min, round(round((vol_3 + diff) / volume_step) * volume_step, 2))
 
                 splits = [
                     {'tier': 1, 'volume': vol_1, 'tp': tp_levels[0], 'label': 'SMC_TP1_2.5R'},

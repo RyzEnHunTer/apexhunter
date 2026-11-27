@@ -198,11 +198,6 @@ class RiskGuardian:
             recovery_risk = current_balance * self.recovery_risk_pct
             rem_to_hard_floor = max(0.0, hard_floor_limit - floor_drop)
             return max(0.0, min(recovery_risk, rem_to_hard_floor, rem_daily))
-            target_risk = min(current_balance * self.recovery_risk_pct, rem_to_hard_floor)
-
-        # Fit into Daily CB budget
-        final_risk = min(target_risk, rem_daily)
-        return max(0.0, final_risk)
 
     def calculate_lot_size(
         self,

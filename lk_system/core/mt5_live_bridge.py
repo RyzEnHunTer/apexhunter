@@ -233,6 +233,7 @@ class MT5LiveBridge:
         # Convert timestamp to UTC using broker offset
         df['time'] = pd.to_datetime(df['time'], unit='s', utc=True) - self.broker_offset
         df = df.set_index('time')
+        df = df[~df.index.duplicated(keep='last')].sort_index()
         
         # Standardize volume column name
         if 'tick_volume' in df.columns:

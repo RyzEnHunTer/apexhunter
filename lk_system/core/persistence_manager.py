@@ -145,7 +145,8 @@ class BotPersistenceManager:
         live_positions: List[Any],
         order_manager: Any,
         risk_guardian: Any,
-        asset_handler: Optional[Any] = None
+        asset_handler: Optional[Any] = None,
+        today_str: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Reconciles persisted state against live MT5 positions and restores intraday risk state.
@@ -160,9 +161,9 @@ class BotPersistenceManager:
         saved_positions = state.get("open_positions", {})
         saved_risk = state.get("daily_risk_state")
 
-        # 1. Restore Daily Risk State if restarting on the same UTC day
+        # 1. Restore Daily Risk State if restarting on the same broker/UTC day
         risk_restored = False
-        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today_str = today_str or datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         if saved_risk and saved_risk.get("date_str") == today_str:
             try:
@@ -230,14 +231,15 @@ class BotPersistenceManager:
                     dir_check = pos.get("direction", "BUY").upper()
 
                     all_already_be = True
+                    be_tol = max(1e-3 if abs(be_target) > 20 else 1e-4, abs(be_target) * 1e-5)
                     for t in live_sibling_tickets:
                         p_live = live_tickets_map.get(t)
                         if p_live:
-                            # Check if MT5 position already has Breakeven SL applied
+                            # Check if MT5 position already has Breakeven SL applied (pip/tick rounding safe for JPY/XAU/NAS)
                             is_at_be = (
-                                (p_live.sl >= be_target - 1e-4)
+                                (p_live.sl >= be_target - be_tol)
                                 if dir_check == "BUY"
-                                else (p_live.sl <= be_target + 1e-4 and p_live.sl > 0)
+                                else (p_live.sl <= be_target + be_tol and p_live.sl > 0)
                             )
                             if is_at_be:
                                 grp["modified_tickets"].add(t)
