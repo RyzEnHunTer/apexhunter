@@ -71,7 +71,8 @@ class MarketStructure:
                 peak_idx = lookback_start + peak_sub_idx
                 if not swing_high[peak_idx]:
                     swing_high[peak_idx] = True
-                    confirmed_swings.append((peak_idx, 'H', highs[peak_idx]))
+                    # Causal confirmation occurs only on bar i when the k-candle pullback completes
+                    confirmed_swings.append((i, 'H', highs[peak_idx]))
             
             # Check for 3-candle bullish pullback confirming a Swing Low prior to the pullback
             is_bullish_pb = True
@@ -88,12 +89,11 @@ class MarketStructure:
                 trough_idx = lookback_start + trough_sub_idx
                 if not swing_low[trough_idx]:
                     swing_low[trough_idx] = True
-                    confirmed_swings.append((trough_idx, 'L', lows[trough_idx]))
+                    confirmed_swings.append((i, 'L', lows[trough_idx]))
         
-        # Map confirmed swings by confirmation index (s_idx + k) for O(1) instantaneous lookup
+        # Map confirmed swings by exact pullback-completion index i (zero lookahead)
         swings_by_confirm_bar = {}
-        for s_idx, s_type, s_price in confirmed_swings:
-            confirm_bar = s_idx + k
+        for confirm_bar, s_type, s_price in confirmed_swings:
             if confirm_bar not in swings_by_confirm_bar:
                 swings_by_confirm_bar[confirm_bar] = []
             swings_by_confirm_bar[confirm_bar].append((s_type, s_price))

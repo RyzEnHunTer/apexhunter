@@ -247,7 +247,7 @@ class MT5LiveBridge:
         """
         bundle = {}
         bundle['M1'] = self.fetch_rates(symbol, 'M1', 400)
-        bundle['M5'] = self.fetch_rates(symbol, 'M5', 300)
+        bundle['M5'] = self.fetch_rates(symbol, 'M5', 600)
         bundle['M15'] = self.fetch_rates(symbol, 'M15', 700)
         bundle['H1'] = self.fetch_rates(symbol, 'H1', 150)
         bundle['H4'] = self.fetch_rates(symbol, 'H4', 100)

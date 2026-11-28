@@ -19,6 +19,14 @@ class DealingRangeEngine:
         """
         df = df.copy()
         n = len(df)
+        if n == 0 or 'Trend' not in df.columns:
+            df['Equilibrium'] = np.nan
+            df['Fib_618'] = np.nan
+            df['Fib_786'] = np.nan
+            df['In_Premium'] = np.zeros(n, dtype=bool)
+            df['In_Discount'] = np.zeros(n, dtype=bool)
+            df['In_OTE'] = np.zeros(n, dtype=bool)
+            return df
         
         equilibrium = np.full(n, np.nan)
         fib_618 = np.full(n, np.nan)

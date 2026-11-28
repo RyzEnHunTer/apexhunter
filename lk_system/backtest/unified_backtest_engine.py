@@ -877,15 +877,17 @@ class UnifiedBacktestEngine:
                 df_prep = eng.prepare_data(preloaded_m5[sym], preloaded_h1[sym])
                 prepared_apex_dfs[sym] = df_prep
 
-        # Prepare indicator dataframes for Authentic Lewis Kelly SMC
+        # Prepare indicator dataframes for Authentic Lewis Kelly SMC (C1: H4 bias + M5 structure/session/CHoCH)
         prepared_lk: Dict[str, Dict[str, Any]] = {}
         for sym, lk_eng in self.lk_engines.items():
             lk_eng.reset_state()
             df_ex_raw = preloaded_m1.get(sym) if lk_eng.tf_exec == "M1" else preloaded_m5.get(sym)
-            if sym in preloaded_h4 and sym in preloaded_m15 and df_ex_raw is not None:
-                h4_p, m15_p, ex_p, adr_d, def_adr = lk_eng.prepare_frames(preloaded_h4[sym], preloaded_m15[sym], df_ex_raw)
+            if sym in preloaded_h4 and not preloaded_h4[sym].empty and df_ex_raw is not None and not df_ex_raw.empty:
+                h4_p, adr_src_p, ex_p, adr_d, def_adr = lk_eng.prepare_frames(
+                    preloaded_h4[sym], preloaded_m15.get(sym), df_ex_raw
+                )
                 prepared_lk[sym] = {
-                    "h4": h4_p, "m15": m15_p, "exec": ex_p,
+                    "h4": h4_p, "m15": adr_src_p, "exec": ex_p,
                     "adr_dict": adr_d, "default_adr": def_adr,
                     "raw_exec": df_ex_raw, "tf_minutes": 1 if lk_eng.tf_exec == "M1" else 5,
                 }
@@ -991,14 +993,11 @@ class UnifiedBacktestEngine:
                     if bar_time_ny not in pk["exec"].index:
                         continue
                     exec_row = pk["exec"].loc[bar_time_ny]
-                    # Strictly closed M15 (open <= close - 15m) and H4 (open <= close - 4h) bars only
-                    m15_sub = pk["m15"][pk["m15"].index <= exec_close_ny - pd.Timedelta(minutes=15)]
-                    if m15_sub.empty:
-                        continue
+                    # Strictly closed H4 (open <= close - 4h) + real-time closed M5 execution context
                     h4_sub = pk["h4"][pk["h4"].index <= exec_close_ny - pd.Timedelta(hours=4)]
                     h4_bar = h4_sub.iloc[-1] if not h4_sub.empty else None
                     lk_sig, lk_diag = self.lk_engines[sym].evaluate_bar_state(
-                        exec_row, bar_time_ny, m15_sub.iloc[-1], h4_bar, pk["adr_dict"], pk["default_adr"]
+                        exec_row, bar_time_ny, None, h4_bar, pk["adr_dict"], pk["default_adr"]
                     )
                     if lk_sig is not None:
                         setup = {
